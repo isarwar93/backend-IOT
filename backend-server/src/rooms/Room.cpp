@@ -23,59 +23,13 @@ void Room::sendMessage(const oatpp::String& message) {
 }
 
 
-
-
-void Room::addClient(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) {
-    std::lock_guard<std::mutex> guard(m_peerByIdLock);
-    m_clients.insert(socket);
-
-    if (!m_running) {
-        m_running = true;
-        m_thread = std::thread([this]() {
-            using namespace std::chrono;
-            while (m_running) {
-                OATPP_LOGi("Room:", "addclient()-loop");
-                auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-                float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
-                std::string json = "{ \"timestamp\": " + std::to_string(now) + ", \"value\": " + std::to_string(value) + " }";
-
-                std::lock_guard<std::mutex> guard(m_peerByIdLock);
-                for (const auto& client : m_clients) {
-                    if (client && client->getConnection()) {
-                        OATPP_LOGi("Room:", "send frame to client");
-                        for(auto& pair : m_peerById) {
-                            OATPP_LOGi("Room:", "sendMessage() - Sending message to userId={}", pair.first);
-                            pair.second->sendMessage(json.c_str());
-                        }
-                        //client->sendOneFrameTextAsync(json.c_str());
-                    }
-                }
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            }
-        });
-    }
-}
-
-
-
-void Room::removeClient(const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) {
-    std::lock_guard<std::mutex> guard(m_peerByIdLock);
-    m_clients.erase(socket);
-    if (m_clients.empty()) {
-        m_running = false;
-        if (m_thread.joinable()) {
-            m_thread.join();
-        }
-    }
-}
-
 Room::~Room() {
+    OATPP_LOGi("Room:", "distructor");
     // m_clients.erase(socket);
-    m_running = false;
-    if (m_thread.joinable()) {
-        m_thread.join();
-    }
+    // m_running = false;
+    // if (m_thread.joinable()) {
+    //     m_thread.join();
+    // }
 }
 
 
@@ -95,20 +49,25 @@ void Room::addGraphSocket(v_int32 userId,
   }
 
 void Room::leaveGraph(v_int32 userId) {
-    std::lock_guard<std::mutex> lock(m_graphMutex);
-    m_graphClients.erase(userId);
-    if (m_graphClients.empty()) {
-        m_graphRunning = false;
-        if (m_graphThread.joinable()) {
-            m_graphThread.join();
+    {
+        std::lock_guard<std::mutex> lock(m_graphMutex);
+        m_graphClients.erase(userId);
+        m_graphById.erase(userId);
+        if (m_graphClients.empty()) {
+                m_graphRunning = false;
+                m_cv.notify_all(); // 🚨 wake the thread immediately
+        
         }
     }
 
-    m_graphById.erase(userId);
+    if (m_graphThread.joinable()) {
+        m_graphThread.join();
+    }
 }
 
 void Room::streamGraph() {
     using namespace std::chrono;
+    std::unique_lock<std::mutex> lock(m_graphMutex);
     while (m_graphRunning) {
         auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
         float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
@@ -118,17 +77,14 @@ void Room::streamGraph() {
             ", \"value\": " + std::to_string(value) +
             " }";
 
-        std::lock_guard<std::mutex> lock(m_graphMutex);
-        // for (auto& pair : m_graphClients) {
-        //     OATPP_LOGi("Room:", "streamGraph() -", pair.first);
-        //         pair.second->sendOneFrameTextAsync(json.c_str());
-        //         //pair.second->sendMessage(json.c_str());
-        //     }
+        //std::unique_lock<std::mutex> lock(m_graphMutex); lock(m_graphMutex);
         for(auto& pair : m_graphById) {
-            OATPP_LOGi("Room:", "sendMessage() - Sending message to userId={}", pair.first);
+            //OATPP_LOGi("Room:", "sendMessage() - Sending message to userId={}", pair.first);
             pair.second->sendMessage(json.c_str());
         }
 
-        std::this_thread::sleep_for(milliseconds(50));
+        m_cv.wait_for(lock, std::chrono::milliseconds(50), [this] {
+            return !m_graphRunning;
+        });
     }
 }
