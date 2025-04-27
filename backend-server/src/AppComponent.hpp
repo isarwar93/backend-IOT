@@ -1,7 +1,8 @@
 #ifndef AppComponent_hpp
 #define AppComponent_hpp
 
-#include "rooms/Lobby.hpp"
+#include "model/Lobby.hpp"
+
 
 #include "oatpp/web/server/AsyncHttpConnectionHandler.hpp"
 #include "oatpp/web/server/HttpRouter.hpp"

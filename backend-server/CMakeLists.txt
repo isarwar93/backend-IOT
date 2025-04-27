@@ -8,18 +8,27 @@ set(CMAKE_CXX_STANDARD 17)
 
 include_directories(src)
 
-add_library(${project_name}-lib
-        src/AppComponent.hpp
-        src/controller/RoomsController.hpp
-        src/rooms/GraphListener.hpp
-        src/rooms/GraphListener.cpp
-        src/rooms/Peer.cpp
-        src/rooms/Peer.hpp
-        src/rooms/Room.cpp
-        src/rooms/Room.hpp
-        src/rooms/Lobby.cpp
-        src/rooms/Lobby.hpp
+# Automatically find all .cpp and .hpp files inside src/
+file(GLOB_RECURSE SOURCES
+  src/*.cpp
+  src/*.hpp
 )
+
+# Create a library target using all found files
+add_library(${project_name}-lib ${SOURCES})
+
+# add_library(${project_name}-lib
+#         src/AppComponent.hpp
+#         src/controller/RoomsController.hpp
+#         src/rooms/GraphListener.hpp
+#         src/rooms/GraphListener.cpp
+#         src/rooms/Peer.cpp
+#         src/rooms/Peer.hpp
+#         src/rooms/Room.cpp
+#         src/rooms/Room.hpp
+#         src/rooms/Lobby.cpp
+#         src/rooms/Lobby.hpp
+# )
 
 ## link libs
 

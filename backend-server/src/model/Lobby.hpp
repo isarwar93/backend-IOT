@@ -12,19 +12,12 @@
 
 
 class Lobby : public oatpp::websocket::AsyncConnectionHandler::SocketInstanceListener {
-public:
-    std::atomic<v_int32> m_userIdCounter;
-    std::unordered_map<oatpp::String, std::shared_ptr<Room>> m_rooms;
-    std::mutex m_roomsMutex;
 
-    std::unordered_map<oatpp::String, v_int32> m_nicknameToUserId;
-
-public:
+    public:
 
     Lobby()
-      : m_userIdCounter(0)
+    : m_userIdCounter(0)
     {}
-
     /**
      * Generate id for new user
      * @return
@@ -40,8 +33,6 @@ public:
     void onGraphSocket_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket,
                               const std::shared_ptr<const ParameterMap>& params);
 
-public:
-
     /**
      *  Called when socket is created
      */
@@ -51,6 +42,11 @@ public:
      *  Called before socket instance is destroyed.
      */
     void onBeforeDestroy_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket) override;
+
+    std::atomic<v_int32> m_userIdCounter;
+    std::unordered_map<oatpp::String, std::shared_ptr<Room>> m_rooms;
+    std::mutex m_roomsMutex;
+    std::unordered_map<oatpp::String, v_int32> m_nicknameToUserId;
 
 };
 

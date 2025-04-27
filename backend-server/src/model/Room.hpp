@@ -2,8 +2,8 @@
 #ifndef ASYNC_SERVER_ROOMS_ROOM_HPP
 #define ASYNC_SERVER_ROOMS_ROOM_HPP
 
-#include "./Peer.hpp"
-#include "./GraphListener.hpp"
+#include "websocket/Peer.hpp"
+#include "websocket/GraphListener.hpp"
 #include <unordered_map>
 
 #include <unordered_set>
@@ -59,7 +59,8 @@ public:
 
     bool isEmpty() const;
 
-    oatpp::String getName() const; 
+    
+   [[nodiscard]] oatpp::String getName() const; 
 };
 
 #endif //ASYNC_SERVER_ROOMS_ROOM_HPP

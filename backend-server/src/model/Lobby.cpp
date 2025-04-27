@@ -68,8 +68,6 @@ void Lobby::onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& soc
 }
 
 void Lobby::onBeforeDestroy_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket) {
-  
-    OATPP_LOGi("Lobby", "onBeforeDestroy_NonBlocking");
     auto listener = socket->getListener();
 
     // Check if it's a chat peer
@@ -82,7 +80,7 @@ void Lobby::onBeforeDestroy_NonBlocking(const std::shared_ptr<AsyncWebSocket>& s
         if (room->isEmpty()) {
             std::lock_guard<std::mutex> lock(m_roomsMutex);
             m_rooms.erase(room->getName()); // or use roomName directly
-            OATPP_LOGi("Lobby", "peer: Deleted room {} because it's empty", peer->getNickname()->c_str());
+            // OATPP_LOGi("Lobby", "peer: Deleted room {} because it's empty", peer->getNickname()->c_str());
         }
     }
     // Check if it's a graph peer
@@ -97,7 +95,7 @@ void Lobby::onBeforeDestroy_NonBlocking(const std::shared_ptr<AsyncWebSocket>& s
         if (room->isEmpty()) {
             std::lock_guard<std::mutex> lock(m_roomsMutex);
             m_rooms.erase(room->getName()); // or use roomName directly
-            OATPP_LOGi("Lobby", " graph: Deleted room {} because it's empty", graphPeer->getNickname()->c_str());
+            // OATPP_LOGi("Lobby", " graph: Deleted room {} because it's empty", graphPeer->getNickname()->c_str());
         }
     }
     socket->setListener(nullptr);

@@ -54,7 +54,7 @@ void Room::leaveGraph(v_int32 userId) {
         m_graphById.erase(userId);
         if (m_graphClients.empty()) {
                 m_graphRunning = false;
-                m_cv.notify_all(); // 🚨 wake the thread immediately
+                m_cv.notify_all(); //  wake the thread immediately
         
         }
     }
