@@ -3,6 +3,15 @@
 #include "./AppComponent.hpp"
 
 // #include "GraphListener.hpp"
+Room::Room(const oatpp::String& name): m_name(name){
+    OATPP_LOGi("Room:", "Constructed");
+
+
+}
+
+Room::~Room() {
+    OATPP_LOGi("Room", "{} destroyed!", m_name->c_str());
+}
 
 void Room::addPeer(const std::shared_ptr<Peer>& peer) {
     std::lock_guard<std::mutex> guard(m_peerByIdLock);
@@ -20,16 +29,6 @@ void Room::sendMessage(const oatpp::String& message) {
         OATPP_LOGi("Room:", "sendMessage() - Sending message to userId={}", pair.first);
         pair.second->sendMessage(message);
     }
-}
-
-
-Room::~Room() {
-    OATPP_LOGi("Room:", "distructor");
-    // m_clients.erase(socket);
-    // m_running = false;
-    // if (m_thread.joinable()) {
-    //     m_thread.join();
-    // }
 }
 
 
@@ -88,3 +87,13 @@ void Room::streamGraph() {
         });
     }
 }
+
+bool Room::isEmpty() const {
+    std::lock_guard<std::mutex> lockPeers(m_peerByIdLock);
+    std::lock_guard<std::mutex> lockGraphs(m_graphMutex);
+    return m_peerById.empty() && m_graphClients.empty();
+}
+
+oatpp::String Room::getName() const {
+    return m_name;
+  }

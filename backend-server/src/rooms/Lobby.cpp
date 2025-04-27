@@ -4,85 +4,101 @@
 
 
 v_int32 Lobby::obtainNewUserId() {
-  return m_userIdCounter ++;
+    return m_userIdCounter ++;
 }
 
 std::shared_ptr<Room> Lobby::getOrCreateRoom(const oatpp::String& roomName) {
-  std::lock_guard<std::mutex> lock(m_roomsMutex);
-  std::shared_ptr<Room>& room = m_rooms[roomName];
-  if(!room) {
-    room = std::make_shared<Room>(roomName);
-  }
-  return room;
+    std::lock_guard<std::mutex> lock(m_roomsMutex);
+    std::shared_ptr<Room>& room = m_rooms[roomName];
+    if(!room) {
+        room = std::make_shared<Room>(roomName);
+    }
+    return room;
 }
 
 void Lobby::onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket, const std::shared_ptr<const ParameterMap>& params) {
+    auto roomName = params->find("roomName")->second;
+    auto nickname = params->find("nickname")->second;
 
+    auto type = params->find("type")->second;
 
-  auto roomName = params->find("roomName")->second;
-  auto nickname = params->find("nickname")->second;
+    // assign unique id to each nick
+    v_int32 userId;
+    {
+        std::lock_guard<std::mutex> lock(m_roomsMutex);
+        auto it = m_nicknameToUserId.find(nickname);
+        if (it != m_nicknameToUserId.end()) {
+            userId = it->second;
+        } else {
+            userId = obtainNewUserId();
+            m_nicknameToUserId[nickname] = userId;
+        }
+    }
 
-  auto type = params->find("type")->second;
-  if (type == "graph") {
-    // onGraphSocket_NonBlocking(socket, params);
-    auto room = getOrCreateRoom(roomName);
+    if (type == "graph") {
+        // onGraphSocket_NonBlocking(socket, params);
+        auto room = getOrCreateRoom(roomName);
 
-    auto userId = obtainNewUserId();
+        auto userId = obtainNewUserId();
 
-  
-    // // Optional: attach listeners
-    // auto graphy = std::make_shared<GraphSocketListener>(room, userId);
-    auto graphy = std::make_shared<GraphListener>(socket, room, nickname, userId);
-    // socket->setListener(std::make_shared<GraphSocketListener>(room, userId));
+      
+        // // Optional: attach listeners
+        // auto graphy = std::make_shared<GraphSocketListener>(room, userId);
+        auto graphy = std::make_shared<GraphListener>(socket, room, nickname, userId);
+        // socket->setListener(std::make_shared<GraphSocketListener>(room, userId));
 
-    socket->setListener(graphy);
-    room->addGraphSocket(userId, socket,graphy);
-    room->sendMessage(nickname + "graph joined " + roomName);
-  
+        socket->setListener(graphy);
+        room->addGraphSocket(userId, socket,graphy);
+        room->sendMessage(nickname + "graph joined " + roomName);
+    
 
-  } else {
-    //onChatSocket_NonBlocking(socket, params); // your existing logic
+    } 
+    else {
+        //onChatSocket_NonBlocking(socket, params); // your existing logic
 
-    auto room = getOrCreateRoom(roomName);
-  
-    auto peer = std::make_shared<Peer>(socket, room, nickname, obtainNewUserId());
-    socket->setListener(peer);
-  
-    room->addPeer(peer);
-    room->sendMessage(nickname + " joined " + roomName);
-    // room->addClient(socket);
-  }
-
+        auto room = getOrCreateRoom(roomName);
+      
+        auto peer = std::make_shared<Peer>(socket, room, nickname, obtainNewUserId());
+        socket->setListener(peer);
+      
+        room->addPeer(peer);
+        room->sendMessage(nickname + " joined " + roomName);
+        // room->addClient(socket);
+    }
 }
 
 void Lobby::onBeforeDestroy_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket) {
   
-  OATPP_LOGi("Lobby", "onBeforeDestroy_NonBlocking");
+    OATPP_LOGi("Lobby", "onBeforeDestroy_NonBlocking");
+    auto listener = socket->getListener();
 
-  auto listener = socket->getListener();
+    // Check if it's a chat peer
+    if (auto peer = std::dynamic_pointer_cast<Peer>(listener)) {
+        auto room = peer->getRoom();
+        auto nickname = peer->getNickname();
+        room->removePeerByUserId(peer->getUserId());
+        m_nicknameToUserId.erase(nickname);
 
-  // Check if it's a chat peer
-  if (auto peer = std::dynamic_pointer_cast<Peer>(listener)) {
+        if (room->isEmpty()) {
+            std::lock_guard<std::mutex> lock(m_roomsMutex);
+            m_rooms.erase(room->getName()); // or use roomName directly
+            OATPP_LOGi("Lobby", "peer: Deleted room {} because it's empty", peer->getNickname()->c_str());
+        }
+    }
+    // Check if it's a graph peer
+    else if (auto graphPeer = std::dynamic_pointer_cast<GraphListener>(listener)) {
 
-    auto nickname = peer->getNickname();
-    auto room = peer->getRoom();
+        auto nickname = graphPeer->getNickname();
+        auto room = graphPeer->getRoom();
+        auto userId = graphPeer->getUserId();
+        room->leaveGraph(userId);
+        m_nicknameToUserId.erase(nickname);
 
-    room->removePeerByUserId(peer->getUserId());
-  }
-
-  // Check if it's a graph peer
-  else if (auto graphPeer = std::dynamic_pointer_cast<GraphListener>(listener)) {
-
-    auto room = graphPeer->getRoom();
-    auto userId = graphPeer->getUserId();
-
-    room->leaveGraph(userId);
-
-  }
-
-  socket->setListener(nullptr);
-
-
-
-
+        if (room->isEmpty()) {
+            std::lock_guard<std::mutex> lock(m_roomsMutex);
+            m_rooms.erase(room->getName()); // or use roomName directly
+            OATPP_LOGi("Lobby", " graph: Deleted room {} because it's empty", graphPeer->getNickname()->c_str());
+        }
+    }
+    socket->setListener(nullptr);
 }

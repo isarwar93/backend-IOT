@@ -13,45 +13,45 @@
 
 class Lobby : public oatpp::websocket::AsyncConnectionHandler::SocketInstanceListener {
 public:
-  std::atomic<v_int32> m_userIdCounter;
-  std::unordered_map<oatpp::String, std::shared_ptr<Room>> m_rooms;
-  std::mutex m_roomsMutex;
-public:
+    std::atomic<v_int32> m_userIdCounter;
+    std::unordered_map<oatpp::String, std::shared_ptr<Room>> m_rooms;
+    std::mutex m_roomsMutex;
 
-  Lobby()
-    : m_userIdCounter(0)
-  {}
-
-  /**
-   * Generate id for new user
-   * @return
-   */
-  v_int32 obtainNewUserId();
-
-  /**
-   * Get room by name or create new one if not exists.
-   * @param roomName
-   * @return
-   */
-  std::shared_ptr<Room> getOrCreateRoom(const oatpp::String& roomName);
-
-
-  void onGraphSocket_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket,
-    const std::shared_ptr<const ParameterMap>& params);
+    std::unordered_map<oatpp::String, v_int32> m_nicknameToUserId;
 
 public:
 
-  /**
-   *  Called when socket is created
-   */
-  void onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket, const std::shared_ptr<const ParameterMap>& params) override;
+    Lobby()
+      : m_userIdCounter(0)
+    {}
 
-  /**
-   *  Called before socket instance is destroyed.
-   */
-  void onBeforeDestroy_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket) override;
+    /**
+     * Generate id for new user
+     * @return
+     */
+    v_int32 obtainNewUserId();
+
+    /**
+     * Get room by name or create new one if not exists.
+     * @param roomName
+     * @return
+     */
+    std::shared_ptr<Room> getOrCreateRoom(const oatpp::String& roomName);
+    void onGraphSocket_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket,
+                              const std::shared_ptr<const ParameterMap>& params);
+
+public:
+
+    /**
+     *  Called when socket is created
+     */
+    void onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket, const std::shared_ptr<const ParameterMap>& params) override;
+
+    /**
+     *  Called before socket instance is destroyed.
+     */
+    void onBeforeDestroy_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket) override;
 
 };
-
 
 #endif //ASYNC_SERVER_ROOMS_LOBBY_HPP
