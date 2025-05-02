@@ -1,45 +1,58 @@
+#include "controller/UserController.hpp"
+#include "controller/GraphController.hpp"
 #include "controller/RoomsController.hpp"
 #include "./AppComponent.hpp"
 
 #include "oatpp/network/Server.hpp"
+#include "CorsInterceptor.hpp"
 
 #include <iostream>
 
 void run() {
 
-  /* Register Components in scope of run() method */
-  AppComponent components;
+    /* Register Components in scope of run() method */
+    AppComponent components;
 
-  /* Get router component */
-  OATPP_COMPONENT(std::shared_ptr<oatpp::web::server::HttpRouter>, router);
+    /* Create CorsInterceptor */
+    OATPP_CREATE_COMPONENT(std::shared_ptr<oatpp::web::server::interceptor::RequestInterceptor>, requestInterceptor)([] {
+      return std::make_shared<CorsInterceptor>();
+    }());
 
-  /* Create RoomsController and add all of its endpoints to router */
-  router->addController(std::make_shared<RoomsController>());
+    /* Get router component */
+    OATPP_COMPONENT(std::shared_ptr<oatpp::web::server::HttpRouter>, router);
 
-  /* Get connection handler component */
-  OATPP_COMPONENT(std::shared_ptr<oatpp::network::ConnectionHandler>, connectionHandler, "http");
+    /* Create UserController and add all of its endpoints to router */
+    router->addController(std::make_shared<UserController>());
 
-  /* Get connection provider component */
-  OATPP_COMPONENT(std::shared_ptr<oatpp::network::ServerConnectionProvider>, connectionProvider);
+    /* Create GraphController and add all of its endpoints to router */
+    router->addController(std::make_shared<GraphController>());
 
-  /* Create server which takes provided TCP connections and passes them to HTTP connection handler */
-  oatpp::network::Server server(connectionProvider, connectionHandler);
+    /* Create RoomsController and add all of its endpoints to router */
+    router->addController(std::make_shared<RoomsController>());
 
-  /* Print info about server port */
-  OATPP_LOGi("MyApp", "Server running on port {}", connectionProvider->getProperty("port").toString());
+    /* Get connection handler component */
+    OATPP_COMPONENT(std::shared_ptr<oatpp::network::ConnectionHandler>, connectionHandler, "http");
 
-  /* Run server */
-  server.run();
+    /* Get connection provider component */
+    OATPP_COMPONENT(std::shared_ptr<oatpp::network::ServerConnectionProvider>, connectionProvider);
 
+    /* Create server which takes provided TCP connections and passes them to HTTP connection handler */
+    oatpp::network::Server server(connectionProvider, connectionHandler);
+
+    /* Print info about server port */
+    OATPP_LOGi("MyApp", "Server running on port {}", connectionProvider->getProperty("port").toString());
+
+    /* Run server */
+    server.run();
 }
 
 int main(int argc, const char * argv[]) {
 
-  oatpp::Environment::init();
+    oatpp::Environment::init();
 
-  run();
+    run();
 
-  oatpp::Environment::destroy();
+    oatpp::Environment::destroy();
 
-  return 0;
+    return 0;
 }

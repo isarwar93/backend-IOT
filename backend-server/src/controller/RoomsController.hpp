@@ -1,4 +1,3 @@
-
 #ifndef RoomsController_hpp
 #define RoomsController_hpp
 
@@ -10,6 +9,7 @@
 
 #include "oatpp/macro/codegen.hpp"
 #include "oatpp/macro/component.hpp"
+#include "./AppComponent.hpp"
 
 
 #include OATPP_CODEGEN_BEGIN(ApiController) //<-- codegen begin
@@ -19,98 +19,68 @@
  */
 class RoomsController : public oatpp::web::server::api::ApiController {
 private:
-  typedef RoomsController __ControllerType;
+    typedef RoomsController __ControllerType;
 private:
-  OATPP_COMPONENT(std::shared_ptr<oatpp::network::ConnectionHandler>, websocketConnectionHandler, "websocket");
+    OATPP_COMPONENT(std::shared_ptr<oatpp::network::ConnectionHandler>, websocketConnectionHandler, "websocket");
 public:
-  RoomsController(OATPP_COMPONENT(std::shared_ptr<ObjectMapper>, objectMapper))
+    RoomsController(OATPP_COMPONENT(std::shared_ptr<ObjectMapper>, objectMapper))
     : oatpp::web::server::api::ApiController(objectMapper)
-  {}
+    {}
 public:
   
-  ENDPOINT_ASYNC("GET", "/", Root) {
+    ENDPOINT_ASYNC("GET", "/", Root) {
+
+ 
     
     ENDPOINT_ASYNC_INIT(Root)
 
     const char* pageTemplate =
-      "<html lang='en'>"
-        "<head>"
-          "<meta charset=utf-8/>"
-        "</head>"
-        "<body>"
-          "<p>Hello Async WebSocket Rooms Server!</p>"
-          "<p>Connect to chat room:</p>"
-          "<code>localhost:8000/ws/chat/{room_name}/?nickname={nickname}</code>"
-        "</body>"
-      "</html>";
+        "<html lang='en'>"
+          "<head>"
+            "<meta charset=utf-8/>"
+          "</head>"
+          "<body>"
+            "<p>Hello Async WebSocket Rooms Server!</p>"
+            "<p>Connect to chat room:</p>"
+            "<code>localhost:8000/ws/chat/{room_name}/?nickname={nickname}</code>"
+          "</body>"
+        "</html>";
 
-    Action act() override {
-      return _return(controller->createResponse(Status::CODE_200, pageTemplate));
-    }
-    
-  };
+        Action act() override {
+            OATPP_LOGi("Roomscontroller", "accessing api");
+        return _return(controller->createResponse(Status::CODE_200, pageTemplate));
+        }
+      
+    };
 
-  ENDPOINT_ASYNC("GET", "ws/chat/{room-name}/*", WS) {
+        ENDPOINT_ASYNC("GET", "ws/chat/{room-name}/*", WS) {
 
-    ENDPOINT_ASYNC_INIT(WS)
+        ENDPOINT_ASYNC_INIT(WS)
 
-    Action act() override {
+        Action act() override {
 
-      auto roomName = request->getPathVariable("room-name");
-      auto nickname = request->getQueryParameter("nickname");
+            auto roomName = request->getPathVariable("room-name");
+            auto nickname = request->getQueryParameter("nickname");
 
-      OATPP_ASSERT_HTTP(nickname, Status::CODE_400, "No nickname specified.");
+            OATPP_ASSERT_HTTP(nickname, Status::CODE_400, "No nickname specified.");
 
-      /* Websocket handshake */
-      auto response = oatpp::websocket::Handshaker::serversideHandshake(request->getHeaders(), controller->websocketConnectionHandler);
+            /* Websocket handshake */
+            auto response = oatpp::websocket::Handshaker::serversideHandshake(request->getHeaders(), controller->websocketConnectionHandler);
 
-      auto parameters = std::make_shared<oatpp::network::ConnectionHandler::ParameterMap>();
+            auto parameters = std::make_shared<oatpp::network::ConnectionHandler::ParameterMap>();
 
-      (*parameters)["roomName"] = roomName;
-      (*parameters)["nickname"] = nickname;
-      (*parameters)["type"] = "chat"; // 👈 Flag for chat
+            (*parameters)["roomName"] = roomName;
+            (*parameters)["nickname"] = nickname;
+            (*parameters)["type"] = "chat"; // Flag for chat
 
-      /* Set connection upgrade params */
-      response->setConnectionUpgradeParameters(parameters);
+            /* Set connection upgrade params */
+            response->setConnectionUpgradeParameters(parameters);
 
-      return _return(response);
+            return _return(response);
 
-    }
+        }
 
-  };
-
-  ENDPOINT_ASYNC("GET", "ws/graph/{room-name}/*", GraphWS) {
-
-    ENDPOINT_ASYNC_INIT(GraphWS)
-
-    Action act() override {
-
-      auto roomName = request->getPathVariable("room-name");
-      auto nickname = request->getQueryParameter("nickname");
-
-      OATPP_ASSERT_HTTP(nickname, Status::CODE_400, "No nickname specified.");
-
-      /* Websocket handshake */
-      auto response = oatpp::websocket::Handshaker::serversideHandshake(
-        request->getHeaders(), 
-        controller->websocketConnectionHandler);
-
-      auto parameters = std::make_shared<oatpp::network::ConnectionHandler::ParameterMap>();
-
-      (*parameters)["roomName"] = roomName;
-      (*parameters)["nickname"] = nickname;
-      (*parameters)["type"] = "graph"; // 👈 This line distinguishes graph sockets
-
-      /* Set connection upgrade params */
-      response->setConnectionUpgradeParameters(parameters);
-
-      return _return(response);
-
-    }
-
-  };
-  
-  // TODO Insert Your endpoints here !!!
+    };
   
 };
 

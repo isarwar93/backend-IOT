@@ -1,7 +1,7 @@
 #ifndef AUTHSERVICE_HPP
 #define AUTHSERVICE_HPP
 
-#include "oatpp/core/Types.hpp"
+#include "oatpp/Types.hpp"
 #include <unordered_map>
 #include <string>
 
