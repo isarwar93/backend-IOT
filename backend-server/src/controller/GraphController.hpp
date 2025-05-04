@@ -2,11 +2,8 @@
 #define GRAPHCONTROLLER_HPP
 
 #include "oatpp-websocket/Handshaker.hpp"
-
 #include "oatpp/web/server/api/ApiController.hpp"
-
 #include "oatpp/network/ConnectionHandler.hpp"
-
 #include "oatpp/macro/codegen.hpp"
 #include "oatpp/macro/component.hpp"
 
@@ -22,12 +19,13 @@ public:
         GraphController(OATPP_COMPONENT(std::shared_ptr<ObjectMapper>, objectMapper))
             : oatpp::web::server::api::ApiController(objectMapper)
         {}
+        
 
-        ENDPOINT_ASYNC("GET", "ws/graph/{user-name}/*", WSGraph) {
+        ENDPOINT_ASYNC("GET", "ws/graph/{username}/*", WSGraph) {
         ENDPOINT_ASYNC_INIT(WSGraph)
 
         Action act() override {
-            auto roomName = request->getPathVariable("user-name");
+            auto username = request->getPathVariable("username");
             auto nickname = request->getQueryParameter("nickname");
 
             OATPP_ASSERT_HTTP(nickname, Status::CODE_400, "No nickname specified.");
@@ -36,7 +34,7 @@ public:
                 request->getHeaders(), controller->websocketConnectionHandler);
 
             auto parameters = std::make_shared<oatpp::network::ConnectionHandler::ParameterMap>();
-            (*parameters)["roomName"] = roomName;
+            (*parameters)["username"] = username;
             (*parameters)["nickname"] = nickname;
             (*parameters)["type"] = "graph";
 

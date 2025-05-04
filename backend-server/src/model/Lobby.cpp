@@ -17,10 +17,32 @@ std::shared_ptr<Room> Lobby::getOrCreateRoom(const oatpp::String& roomName) {
 }
 
 void Lobby::onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket, const std::shared_ptr<const ParameterMap>& params) {
-    auto roomName = params->find("roomName")->second;
+
+    if (!params) {
+        OATPP_LOGi("Lobby", "params must not be null");
+        return;
+    }
+
+    auto it = params->find("username");
+    if (it != params->end()) {
+        //PASS
+    } else {
+        OATPP_LOGi("Lobby", "username key not found in params");
+        return;
+    }
+
+    auto roomName = params->find("username")->second;
     auto nickname = params->find("nickname")->second;
 
+    OATPP_LOGi("Lobby", " roomName: {}",roomName);
+    OATPP_LOGi("Lobby", " nickname: {}",nickname);
+
+  
+    // auto roomName = params->find("roomName")->second;
+
+
     auto type = params->find("type")->second;
+    OATPP_LOGi("Lobby", " type: {}",type);
 
     // assign unique id to each nick
     v_int32 userId;
@@ -36,16 +58,12 @@ void Lobby::onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& soc
     }
 
     if (type == "graph") {
-        // onGraphSocket_NonBlocking(socket, params);
         auto room = getOrCreateRoom(roomName);
 
         auto userId = obtainNewUserId();
 
       
-        // // Optional: attach listeners
-        // auto graphy = std::make_shared<GraphSocketListener>(room, userId);
         auto graphy = std::make_shared<GraphListener>(socket, room, nickname, userId);
-        // socket->setListener(std::make_shared<GraphSocketListener>(room, userId));
 
         socket->setListener(graphy);
         room->addGraphSocket(userId, socket,graphy);
@@ -54,7 +72,6 @@ void Lobby::onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& soc
 
     } 
     else {
-        //onChatSocket_NonBlocking(socket, params); // your existing logic
 
         auto room = getOrCreateRoom(roomName);
       
@@ -63,7 +80,6 @@ void Lobby::onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& soc
       
         room->addPeer(peer);
         room->sendMessage(nickname + " joined " + roomName);
-        // room->addClient(socket);
     }
 }
 

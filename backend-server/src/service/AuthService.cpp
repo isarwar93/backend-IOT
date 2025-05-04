@@ -2,8 +2,8 @@
 #include "./AppComponent.hpp"
 
 AuthService::AuthService() {
-  m_users["admin"] = "admin";
-  m_users["guest"] = "guest";
+    m_users["admin"] = "admin";
+    m_users["guest"] = "guest";
 }
 
 bool AuthService::authenticate(const oatpp::String& username, const oatpp::String& password) const {

@@ -28,10 +28,7 @@ public:
     {}
 public:
   
-    ENDPOINT_ASYNC("GET", "/", Root) {
-
- 
-    
+    ENDPOINT_ASYNC("GET", "/", Root) {    
     ENDPOINT_ASYNC_INIT(Root)
 
     const char* pageTemplate =
@@ -53,13 +50,13 @@ public:
       
     };
 
-        ENDPOINT_ASYNC("GET", "ws/chat/{room-name}/*", WS) {
+    ENDPOINT_ASYNC("GET", "ws/chat/{username}/*", WS) {
 
         ENDPOINT_ASYNC_INIT(WS)
 
         Action act() override {
 
-            auto roomName = request->getPathVariable("room-name");
+            auto username = request->getPathVariable("username");
             auto nickname = request->getQueryParameter("nickname");
 
             OATPP_ASSERT_HTTP(nickname, Status::CODE_400, "No nickname specified.");
@@ -69,7 +66,7 @@ public:
 
             auto parameters = std::make_shared<oatpp::network::ConnectionHandler::ParameterMap>();
 
-            (*parameters)["roomName"] = roomName;
+            (*parameters)["username"] = username;
             (*parameters)["nickname"] = nickname;
             (*parameters)["type"] = "chat"; // Flag for chat
 
@@ -79,9 +76,7 @@ public:
             return _return(response);
 
         }
-
     };
-  
 };
 
 #include OATPP_CODEGEN_END(ApiController) //<-- codegen end

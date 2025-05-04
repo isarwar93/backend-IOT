@@ -111,18 +111,6 @@ v_int32 Peer::getUserId() {
   return m_userId;
 }
 
-// oatpp::async::CoroutineStarter Peer::onPing(const std::shared_ptr<AsyncWebSocket>& socket, const oatpp::String& message) {
-//   return oatpp::async::synchronize(&m_writeLock, socket->sendPongAsync(message));
-// }
-
-// oatpp::async::CoroutineStarter Peer::onPong(const std::shared_ptr<AsyncWebSocket>& socket, const oatpp::String& message) {
-//   return nullptr; // do nothing
-// }
-
-// oatpp::async::CoroutineStarter Peer::onClose(const std::shared_ptr<AsyncWebSocket>& socket, v_uint16 code, const oatpp::String& message) {
-//   return nullptr; // do nothing
-// }
-
 oatpp::async::CoroutineStarter Peer::readMessage(const std::shared_ptr<AsyncWebSocket>& socket, v_uint8 opcode, p_char8 data, oatpp::v_io_size size) {
 
   if(size == 0) { // message transfer finished

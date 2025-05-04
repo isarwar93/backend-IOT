@@ -11,7 +11,6 @@ private:
 
 public:
     AuthService();
-
     bool authenticate(const oatpp::String& username, const oatpp::String& password) const;
 };
 
