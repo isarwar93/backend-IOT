@@ -6,6 +6,8 @@
 #include "oatpp/network/Server.hpp"
 #include "CorsInterceptor.hpp"
 
+#include "ble/ble.hpp"
+
 #include <iostream>
 
 void run() {
@@ -47,6 +49,31 @@ void run() {
 }
 
 int main(int argc, const char * argv[]) {
+
+
+  std::string targetMac = "F0:F5:BD:2C:1E:66";
+  BleClient client("blehr_sensor_1.0");
+
+  // client.startScan([](const std::string& address, const std::string& name) {
+  //     std::cout << "Discovered: " << name << " [" << address << "]" << std::endl;
+  // });
+
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+
+  std::cout << "Connecting to " << targetMac << "...\n";
+  if (client.connectToDevice(targetMac)) {
+      std::cout << "Connected successfully.\n";
+
+      if (client.enableHeartRateNotifications(targetMac)) {
+          std::cout << "Waiting for notifications...\n";
+          // Run forever to keep receiving
+         
+      }
+  } else {
+      std::cout << "❌ Failed to connect.\n";
+  }
+
+  return 0;
 
     oatpp::Environment::init();
 

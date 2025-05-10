@@ -1,7 +1,6 @@
 #ifndef GRAPHLISTENER_HPP
 #define GRAPHLISTENER_HPP
 
-
 #include "oatpp-websocket/AsyncWebSocket.hpp"
 #include "oatpp/async/Lock.hpp"
 #include "oatpp/async/Executor.hpp"
@@ -9,7 +8,6 @@
 #include "websocket/BaseSocketListener.hpp"
 
 class Room; // FWD
-
 
 class GraphListener : public BaseSocketListener {
 private:
@@ -34,7 +32,6 @@ private:
     */
     OATPP_COMPONENT(std::shared_ptr<oatpp::async::Executor>, m_asyncExecutor);
 
-
 public:
 
     GraphListener(const std::shared_ptr<AsyncWebSocket>& socket,
@@ -46,6 +43,8 @@ public:
         , m_nickname(nickname)
         , m_userId(userId)
         {}
+
+    ~GraphListener();
   
     /**
      * Get room of the peer.

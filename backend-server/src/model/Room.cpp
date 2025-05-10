@@ -2,11 +2,8 @@
 #include "Room.hpp"
 #include "./AppComponent.hpp"
 
-// #include "GraphListener.hpp"
 Room::Room(const oatpp::String& name): m_name(name){
-    OATPP_LOGi("Room:", "Constructed");
-
-
+    OATPP_LOGi("Room:", "{} Constructed",m_name->c_str());
 }
 
 Room::~Room() {
@@ -31,8 +28,6 @@ void Room::sendMessage(const oatpp::String& message) {
     }
 }
 
-
-
 void Room::addGraphSocket(v_int32 userId, 
     const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket,
     const std::shared_ptr<GraphListener>& graphListener) {
@@ -42,10 +37,10 @@ void Room::addGraphSocket(v_int32 userId,
     m_graphById[graphListener->getUserId()] = graphListener;
 
     if (!m_graphRunning) {
-      m_graphRunning = true;
-      m_graphThread = std::thread([this]() { streamGraph(); });
+        m_graphRunning = true;
+        m_graphThread = std::thread([this]() { streamGraph(); });
     }
-  }
+}
 
 void Room::leaveGraph(v_int32 userId) {
     {
@@ -53,8 +48,8 @@ void Room::leaveGraph(v_int32 userId) {
         m_graphClients.erase(userId);
         m_graphById.erase(userId);
         if (m_graphClients.empty()) {
-                m_graphRunning = false;
-                m_cv.notify_all(); //  wake the thread immediately
+            m_graphRunning = false;
+            m_cv.notify_all(); //  wake the thread immediately
         
         }
     }
@@ -76,7 +71,6 @@ void Room::streamGraph() {
             ", \"value\": " + std::to_string(value) +
             " }";
 
-        //std::unique_lock<std::mutex> lock(m_graphMutex); lock(m_graphMutex);
         for(auto& pair : m_graphById) {
             //OATPP_LOGi("Room:", "sendMessage() - Sending message to userId={}", pair.first);
             pair.second->sendMessage(json.c_str());

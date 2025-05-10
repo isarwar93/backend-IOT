@@ -28,26 +28,26 @@ public:
     ENDPOINT_ASYNC_INIT(Login)
 
         Action act() override {
-          // Read the body asynchronously
-          return request->readBodyToStringAsync().callbackTo(&Login::onBodyRead);
+            // Read the body asynchronously
+            return request->readBodyToStringAsync().callbackTo(&Login::onBodyRead);
         }
 
         Action onBodyRead(const oatpp::String& body) {
             if (!body) {
-              auto resp = controller->createResponse(Status::CODE_400, "Empty body");
-              resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
-              resp->putHeader("Access-Control-Allow-Credentials", "true");
-              return _return(resp);
+                auto resp = controller->createResponse(Status::CODE_400, "Empty body");
+                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5174");
+                resp->putHeader("Access-Control-Allow-Credentials", "true");
+                return _return(resp);
             }
 
             auto usernamePos = body->find("username=");
             auto passwordPos = body->find("&password=");
 
             if (usernamePos == -1 || passwordPos == -1) {
-              auto resp = controller->createResponse(Status::CODE_400, "Bad Request");
-            //   resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
-            //   resp->putHeader("Access-Control-Allow-Credentials", "true");
-              return _return(resp);
+                auto resp = controller->createResponse(Status::CODE_400, "Bad Request");
+                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5174");
+                resp->putHeader("Access-Control-Allow-Credentials", "true");
+                return _return(resp);
             }
 
             auto username = body->substr(usernamePos + 9, passwordPos - (usernamePos + 9));
@@ -57,13 +57,13 @@ public:
 
             if (authService.authenticate(username, password)) {
                 auto resp = controller->createResponse(Status::CODE_200, "Login Successful");
-                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5174");
                 resp->putHeader("Access-Control-Allow-Credentials", "true");
                 return _return(resp);
             } else {
                 auto resp = controller->createResponse(Status::CODE_401, "Unauthorized");
-                // resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
-                // resp->putHeader("Access-Control-Allow-Credentials", "true");
+                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+                resp->putHeader("Access-Control-Allow-Credentials", "true");
                 return _return(resp);
             }
         }

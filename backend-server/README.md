@@ -48,6 +48,17 @@ make -j$(nproc)
 make install
 ```
 
+### For pkg config path set
+
+export PKG_CONFIG_SYSROOT_DIR=/opt/fsl-imx-wayland/6.6-scarthgap/sysroots/cortexa7t2hf-neon-poky-linux-gnueabi
+
+export PKG_CONFIG_PATH=$PKG_CONFIG_SYSROOT_DIR/usr/lib/pkgconfig:$PKG_CONFIG_SYSROOT_DIR/usr/share/pkgconfig
+
+export PKG_CONFIG_LIBDIR=$PKG_CONFIG_PATH
+
+export PKG_CONFIG=/opt/fsl-imx-wayland/6.6-scarthgap/sysroots/x86_64-pokysdk-linux/usr/bin/pkg-config
+
+
 
 ## General fast backend for IOT sensors
 

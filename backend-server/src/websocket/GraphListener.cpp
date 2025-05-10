@@ -2,6 +2,11 @@
 #include "model/Room.hpp"
 #include "./AppComponent.hpp"
 
+GraphListener::~GraphListener(){
+
+    // OATPP_LOGi("Graph listener", "Class destroyed");
+}
+
 void GraphListener::sendMessage(const oatpp::String& message) {
     class SendMessageCoroutine : public oatpp::async::Coroutine<SendMessageCoroutine> {
     private:
@@ -17,7 +22,7 @@ void GraphListener::sendMessage(const oatpp::String& message) {
             , m_message(message)
             {}
         Action act() override {
-          return oatpp::async::synchronize(m_lock, m_websocket->sendOneFrameTextAsync(m_message)).next(finish());
+            return oatpp::async::synchronize(m_lock, m_websocket->sendOneFrameTextAsync(m_message)).next(finish());
         }
     };
     m_asyncExecutor->execute<SendMessageCoroutine>(&m_writeLock, m_socket, message);
@@ -44,5 +49,6 @@ oatpp::String GraphListener::getNickname() {
 }
 
 v_int32 GraphListener::getUserId() {
+    // OATPP_LOGi("Graph listener", "getUserId: {}",m_userId);
     return m_userId;
 }

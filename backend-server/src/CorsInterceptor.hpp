@@ -14,7 +14,7 @@ public:
                 oatpp::web::protocol::http::Status::CODE_204, nullptr
               );
 
-              //response->putHeader("Access-Control-Allow-Origin", "http://localhost:5173"); // or "*" if you're okay with any origin
+              response->putHeader("Access-Control-Allow-Origin", "http://localhost:5173"); // or "*" if you're okay with any origin
               response->putHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
               response->putHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
               response->putHeader("Access-Control-Allow-Credentials", "true");
