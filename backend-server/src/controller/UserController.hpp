@@ -35,7 +35,7 @@ public:
         Action onBodyRead(const oatpp::String& body) {
             if (!body) {
                 auto resp = controller->createResponse(Status::CODE_400, "Empty body");
-                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5174");
+                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
                 resp->putHeader("Access-Control-Allow-Credentials", "true");
                 return _return(resp);
             }
@@ -45,7 +45,7 @@ public:
 
             if (usernamePos == -1 || passwordPos == -1) {
                 auto resp = controller->createResponse(Status::CODE_400, "Bad Request");
-                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5174");
+                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
                 resp->putHeader("Access-Control-Allow-Credentials", "true");
                 return _return(resp);
             }
@@ -57,7 +57,7 @@ public:
 
             if (authService.authenticate(username, password)) {
                 auto resp = controller->createResponse(Status::CODE_200, "Login Successful");
-                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5174");
+                resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
                 resp->putHeader("Access-Control-Allow-Credentials", "true");
                 return _return(resp);
             } else {
