@@ -2,12 +2,36 @@
 
 ## OATPP lib install
 
+First install oatpp library
+if cmake not installed, first install cmake and then go the next step:
+
 ```
-git clone --branch v1.4.0 https://github.com/oatpp/oatpp.git
+sudo apt update
+sudo apt install -y cmake
+```
+
+```
+git clone https://github.com/oatpp/oatpp.git
+```
+Then go master branch for v1.4.0
+```
+git checkout v1.4.0
+```
+```
 cd oatpp
 mkdir build && cd build
-cmake
-make install
+-> for Ubuntu without the need of cross compile
+cmake ..   
+```
+-> For cross compiling
+cmake .. \
+  -DCMAKE_TOOLCHAIN_FILE=../../backend-IOT/backend-server/toolchain.cmake \
+  -DCMAKE_INSTALL_PREFIX=/opt/fsl-imx-wayland/6.6-scarthgap/sysroots/cortexa7t2hf-neon-poky-linux-gnueabi/usr \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_FLAGS_RELEASE="-O2" \
+  -DCMAKE_C_FLAGS_RELEASE="-O2"
+
+sudo make install
 ```
 
 
@@ -39,10 +63,13 @@ source /opt/fsl-imx-wayland/6.6-scarthgap/environment-setup-cortexa7t2hf-neon-po
 git clone https://github.com/oatpp/oatpp-websocket.git
 cd oatpp-websocket
 
-mkdir build && cd build
+
 cmake .. \
-    -DCMAKE_TOOLCHAIN_FILE=/home/docuser/code/CMake/toolchain.cmake \
-    -DCMAKE_INSTALL_PREFIX=/opt/fsl-imx-wayland/6.6-scarthgap/sysroots/cortexa7t2hf-neon-poky-linux-gnueabi/usr
+  -DCMAKE_TOOLCHAIN_FILE=../../backend-IOT/backend-server/toolchain.cmake \
+  -DCMAKE_INSTALL_PREFIX=/opt/fsl-imx-wayland/6.6-scarthgap/sysroots/cortexa7t2hf-neon-poky-linux-gnueabi/usr \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_FLAGS_RELEASE="-O2" \
+  -DCMAKE_C_FLAGS_RELEASE="-O2"
 make -j$(nproc)
 
 make install
