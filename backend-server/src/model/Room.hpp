@@ -4,6 +4,7 @@
 
 #include "websocket/Peer.hpp"
 #include "websocket/GraphListener.hpp"
+// #include "service/BleService.hpp"
 #include <unordered_map>
 
 #include <unordered_set>
@@ -25,7 +26,7 @@ private:
     mutable std::mutex m_graphMutex;
     std::condition_variable m_cv;
 
-    
+    // std::shared_ptr<BleService> m_bleService;
 public:
     Room(const oatpp::String& name);
     ~Room();
@@ -61,6 +62,8 @@ public:
 
     
    [[nodiscard]] oatpp::String getName() const; 
+
+    // void setBleService(std::shared_ptr<BleService> ble);
 };
 
 #endif //ASYNC_SERVER_ROOMS_ROOM_HPP

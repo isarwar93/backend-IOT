@@ -12,6 +12,7 @@ std::shared_ptr<Room> Lobby::getOrCreateRoom(const oatpp::String& roomName) {
     std::shared_ptr<Room>& room = m_rooms[roomName];
     if(!room) {
         room = std::make_shared<Room>(roomName);
+        //room->setBleService(m_bleService); //  Inject BLE service
     }
     return room;
 }

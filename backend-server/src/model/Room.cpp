@@ -1,6 +1,8 @@
 
 #include "Room.hpp"
 #include "./AppComponent.hpp"
+#include "config/Constants.hpp"
+#include "service/ble/BleService.hpp"
 
 Room::Room(const oatpp::String& name): m_name(name){
     OATPP_LOGi("Room:", "{} Constructed",m_name->c_str());
@@ -62,9 +64,16 @@ void Room::leaveGraph(v_int32 userId) {
 void Room::streamGraph() {
     using namespace std::chrono;
     std::unique_lock<std::mutex> lock(m_graphMutex);
+    float value = 0.0f;
+    auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
     while (m_graphRunning) {
         auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-        float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
+        //float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
+        // float value = USE_SRVC("ble")->getLatestMeasurement();
+        
+        if (bleService) {
+            value = bleService->getLatestMeasurement();
+        }
 
         std::string json =
             "{ \"timestamp\": " + std::to_string(now) +
@@ -76,7 +85,7 @@ void Room::streamGraph() {
             pair.second->sendMessage(json.c_str());
         }
 
-        m_cv.wait_for(lock, std::chrono::milliseconds(50), [this] {
+        m_cv.wait_for(lock, std::chrono::milliseconds(10), [this] {
             return !m_graphRunning;
         });
     }
@@ -90,4 +99,9 @@ bool Room::isEmpty() const {
 
 oatpp::String Room::getName() const {
     return m_name;
-  }
+}
+
+
+// void Room::setBleService(std::shared_ptr<BleService> ble) {
+//     m_bleService = std::move(ble);
+// }

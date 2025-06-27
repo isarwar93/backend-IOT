@@ -15,9 +15,16 @@ class Lobby : public oatpp::websocket::AsyncConnectionHandler::SocketInstanceLis
 
     public:
 
-    Lobby()
-    : m_userIdCounter(0)
+    Lobby():m_userIdCounter(0)
     {}
+
+    // Lobby(std::shared_ptr<BleService> ble) : m_bleService(std::move(ble)),m_userIdCounter(0)
+    //     {}
+
+    // void setBleService(const std::shared_ptr<BleService>& service) {
+    //     m_bleService = service;
+    // }
+
     /**
      * Generate id for new user
      * @return
@@ -47,6 +54,10 @@ class Lobby : public oatpp::websocket::AsyncConnectionHandler::SocketInstanceLis
     std::unordered_map<oatpp::String, std::shared_ptr<Room>> m_rooms;
     std::mutex m_roomsMutex;
     std::unordered_map<oatpp::String, v_int32> m_nicknameToUserId;
+
+
+    // private:
+    // std::shared_ptr<BleService> m_bleService;
 
 };
 
