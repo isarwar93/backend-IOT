@@ -11,7 +11,19 @@ include_directories(src)
 file(GLOB_RECURSE SOURCES
   src/*.cpp
   src/*.hpp
+ # src/*.c
+ # src/*.h
 )
+
+# To have json library
+include(FetchContent)
+FetchContent_Declare(
+  json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.2 # or latest stable
+)
+FetchContent_MakeAvailable(json)
+
 
 add_library(${project_name}-lib ${SOURCES})
 
@@ -26,7 +38,7 @@ pkg_check_modules(DBUS REQUIRED dbus-1)
 pkg_check_modules(BLUETOOTH REQUIRED bluez)
 
 # Apply include dirs and libs to library
-target_include_directories(${project_name}-lib PRIVATE
+include_directories(${project_name}-lib PRIVATE
   ${GLIB2_INCLUDE_DIRS}
   ${DBUS_INCLUDE_DIRS}
   ${BLUETOOTH_INCLUDE_DIRS}
@@ -35,9 +47,11 @@ target_include_directories(${project_name}-lib PRIVATE
 target_link_libraries(${project_name}-lib
   oatpp::oatpp
   oatpp::oatpp-websocket
+  nlohmann_json::nlohmann_json
   ${GLIB2_LIBRARIES}
   ${DBUS_LIBRARIES}
   ${BLUETOOTH_LIBRARIES}
+
 )
 
 target_compile_options(${project_name}-lib PRIVATE

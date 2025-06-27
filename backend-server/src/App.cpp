@@ -6,18 +6,24 @@
 #include "oatpp/network/Server.hpp"
 #include "CorsInterceptor.hpp"
 
-#include "ble/ble.hpp"
+// #include "ble/ble.hpp"
+#include "service/ServiceManager.hpp"
+
+#include "config/Constants.hpp"
+#include "service/ServiceRegistry.hpp"
+#include "service/ble/BleService.hpp"
+#include "service/MqttService.hpp"
 
 #include <iostream>
+#include <chrono>
 
 void run() {
-
     /* Register Components in scope of run() method */
     AppComponent components;
 
     /* Create CorsInterceptor */
     OATPP_CREATE_COMPONENT(std::shared_ptr<oatpp::web::server::interceptor::RequestInterceptor>, requestInterceptor)([] {
-      return std::make_shared<CorsInterceptor>();
+        return std::make_shared<CorsInterceptor>();
     }());
 
     /* Get router component */
@@ -49,33 +55,23 @@ void run() {
 }
 
 int main(int argc, const char * argv[]) {
-
-
-  std::string targetMac = "F0:F5:BD:2C:1E:66";
-  BleClient client("blehr_sensor_1.0");
-
-  // client.startScan([](const std::string& address, const std::string& name) {
-  //     std::cout << "Discovered: " << name << " [" << address << "]" << std::endl;
-  // });
-
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-
-  std::cout << "Connecting to " << targetMac << "...\n";
-  if (client.connectToDevice(targetMac)) {
-      std::cout << "Connected successfully.\n";
-
-      if (client.enableHeartRateNotifications(targetMac)) {
-          std::cout << "Waiting for notifications...\n";
-          // Run forever to keep receiving
-         
-      }
-  } else {
-      std::cout << "❌ Failed to connect.\n";
-  }
-
-  return 0;
-
     oatpp::Environment::init();
+
+    OATPP_LOGi("MyApp", "Backend Main program started");
+    ServiceRegistry::instance().registerService("ble", std::make_shared<BleService>());
+    ServiceRegistry::instance().registerService("mqtt", std::make_shared<MqttService>());
+
+    auto bleService = USE_SRVC("ble");
+    bleService->start();
+// TODO fix this
+    if (bleService && bleService->isRunning()) {
+        //std::cout << "BLE is running!\n";
+        //bleService->sendCommand("reset");
+    }
+    else
+    {
+        OATPP_LOGi("MyApp", "Ble not running");
+    }
 
     run();
 
