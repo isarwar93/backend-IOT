@@ -1,12 +1,12 @@
 #include "controller/UserController.hpp"
 #include "controller/GraphController.hpp"
 #include "controller/RoomsController.hpp"
+#include "controller/BleController.hpp"
 #include "./AppComponent.hpp"
 
 #include "oatpp/network/Server.hpp"
 #include "CorsInterceptor.hpp"
 
-// #include "ble/ble.hpp"
 #include "service/ServiceManager.hpp"
 
 #include "config/Constants.hpp"
@@ -38,6 +38,9 @@ void run() {
     /* Create RoomsController and add all of its endpoints to router */
     router->addController(std::make_shared<RoomsController>());
 
+     /* Create BleController and add all of its endpoints to router */
+    router->addController(std::make_shared<BleController>());
+
     /* Get connection handler component */
     OATPP_COMPONENT(std::shared_ptr<oatpp::network::ConnectionHandler>, connectionHandler, "http");
 
@@ -63,7 +66,7 @@ int main(int argc, const char * argv[]) {
 
     auto bleService = USE_SRVC("ble");
     bleService->start();
-// TODO fix this
+    //TODO: fix this
     if (bleService && bleService->isRunning()) {
         //std::cout << "BLE is running!\n";
         //bleService->sendCommand("reset");
