@@ -1,13 +1,14 @@
 #ifndef BLECONTROLLER_HPP
 #define BLECONTROLLER_HPP
 
-#include "service/ble/BleService.hpp"
-#include "dto/BleDtos.hpp"
-#include "oatpp/web/server/api/ApiController.hpp"
+
 #include "oatpp/macro/component.hpp"
 #include "oatpp-websocket/Handshaker.hpp"
 #include "oatpp/network/ConnectionHandler.hpp"
 #include "oatpp/macro/codegen.hpp"
+#include "service/ble/BleService.hpp"
+#include "dto/BleDtos.hpp"
+#include "config/LogAdapt.hpp"
 
 #include "config/Constants.hpp"
 #include "service/ServiceRegistry.hpp"
@@ -22,15 +23,14 @@ public:
     ENDPOINT_ASYNC("GET", "/api/ble/scan", scanDevices){
         ENDPOINT_ASYNC_INIT(scanDevices)
         Action act() override {
-            OATPP_LOGi("BleController.hpp", "/api/ble/scan endpoint");
+            LOGI("/api/ble/scan endpoint");
             auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
             if (!bleService) {
                 auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
                 return _return(resp);
             }
-            // Timeout should be controlled from frontend
+            // TODO: Timeout should be controlled from frontend
             auto list = bleService->scanDevices(2);
-            // bleService->printScanResults(list);
             oatpp::List<oatpp::Object<DeviceDto>> result = oatpp::List<oatpp::Object<DeviceDto>>::createShared();
             for (const auto& d : list) {
                 auto dto = DeviceDto::createShared();
@@ -48,7 +48,7 @@ public:
     ENDPOINT_ASYNC("POST", "/api/ble/connect", connectToDevice) {
         ENDPOINT_ASYNC_INIT(connectToDevice)
         Action act() override {
-            OATPP_LOGi("BleController.hpp", "POST /api/ble/connect endpoint");
+            LOGI("POST /api/ble/connect endpoint");
             // Read the body asynchronously
             return request->readBodyToStringAsync().callbackTo(&connectToDevice::onBodyRead);
         }
@@ -72,7 +72,7 @@ public:
     ENDPOINT_ASYNC("OPTIONS", "/api/ble/connect", optionsConnect) {
         ENDPOINT_ASYNC_INIT(optionsConnect)
         Action act() override {
-            OATPP_LOGi("BleController.hpp", "OPTIONS /api/ble/connect endpoint");
+            OATPP_LOGi("Ble", "OPTIONS /api/ble/connect endpoint");
             auto resp = controller->createResponse(Status::CODE_200, "");
             resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
             resp->putHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -80,16 +80,29 @@ public:
         }
     };
 
-    ENDPOINT_ASYNC("GET", "/api/ble/services", getServices) {
+    ENDPOINT_INFO(getServices) {
+        info->summary = "Getting MAC address of the current devices using path paramters through async APIs.";
+        info->addResponse<String>(Status::CODE_200, "text/plain");
+        info->pathParams.add<String>("mac").description = "MAC address of the device"; // add param1 info
+    }
+
+    // ENDPOINT_ASYNC("GET", "/api/ble/services", getServices) {
+    ENDPOINT_ASYNC("GET", "/api/ble/services/{mac}", getServices) {
         ENDPOINT_ASYNC_INIT(getServices)
         Action act() override {
-            OATPP_LOGi("BleController.hpp", "GET /api/ble/services endpoint");
+         
+
+            auto mac = request->getPathVariable("mac");
+             
+            LOGI("GET /api/ble/services endpoint received-> mac: {}", mac);
+            OATPP_ASSERT_HTTP(mac , Status::CODE_400, "mac should not be null");
+            
             auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
             if (!bleService) {
                 auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
                 return _return(resp);
             }
-            auto services = bleService->getServicesAndCharacteristics();
+            auto services = bleService->getServicesAndCharacteristics(mac);
             oatpp::List<oatpp::Object<ServiceDto>> result = oatpp::List<oatpp::Object<ServiceDto>>::createShared();
             for (const auto& s : services) {
                 auto sDto = ServiceDto::createShared();
@@ -98,12 +111,21 @@ public:
 
                 for (const auto& c : s.characteristics) {
                     auto cDto = CharacteristicDto::createShared();
+
+                    // fill cDto->properties from c.properties (not sDto)
+                    cDto->properties = oatpp::Vector<oatpp::String>::createShared();
+                    for (const auto& p : c.properties) {
+                        cDto->properties->push_back(p.c_str());
+                    }
+                    cDto->notifying = c.notifying;
                     cDto->uuid = c.uuid;
                     cDto->value = c.value;
+
                     sDto->characteristics->push_back(cDto);
                 }
                 result->push_back(sDto);
             }
+
             auto resp = controller->createDtoResponse(Status::CODE_200, result);
             resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
             return _return(resp);
@@ -136,7 +158,6 @@ public:
             // }
 
             bool ok = bleService->enableServices(body);
-            // bool ok = true;//bleService->connectToDevice(body);
             
             auto resp = controller->createDtoResponse(Status::CODE_200, oatpp::Boolean(ok));
             resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
@@ -345,7 +366,7 @@ public:
     ENDPOINT_ASYNC("GET", "/api/ble/status", getStatus) {
         ENDPOINT_ASYNC_INIT(getStatus)
         Action act() override {
-            OATPP_LOGi("BleController.hpp", "GET /api/ble/getStatus endpoint");
+            LOGI("GET /api/ble/getStatus endpoint");
             // Read the body asynchronously
             return request->readBodyToStringAsync().callbackTo(&getStatus::onBodyRead);
         }

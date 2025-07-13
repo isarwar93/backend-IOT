@@ -51,7 +51,7 @@ void run() {
     oatpp::network::Server server(connectionProvider, connectionHandler);
 
     /* Print info about server port */
-    OATPP_LOGi("MyApp", "Server running on port {}", connectionProvider->getProperty("port").toString());
+    LOGI("Server running on port {}", connectionProvider->getProperty("port").toString());
 
     /* Run server */
     server.run();
@@ -60,7 +60,7 @@ void run() {
 int main(int argc, const char * argv[]) {
     oatpp::Environment::init();
 
-    OATPP_LOGi("MyApp", "Backend Main program started");
+    LOGI("Backend Main program started");
     ServiceRegistry::instance().registerService("ble", std::make_shared<BleService>());
     ServiceRegistry::instance().registerService("mqtt", std::make_shared<MqttService>());
 
@@ -73,7 +73,7 @@ int main(int argc, const char * argv[]) {
     }
     else
     {
-        OATPP_LOGi("MyApp", "Ble not running");
+        LOGI("Ble not running");
     }
 
     run();

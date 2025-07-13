@@ -33,9 +33,12 @@ class CharacteristicDto : public oatpp::DTO {
 
     DTO_FIELD(oatpp::String, uuid);
     DTO_FIELD(oatpp::String, value);
+
+    DTO_FIELD(oatpp::Boolean, notifying);
+    DTO_FIELD(oatpp::Vector<oatpp::String>, properties); 
 };
 
-/**
+/*
  * DTO representing a BLE service and its characteristics.
  */
 class ServiceDto : public oatpp::DTO {

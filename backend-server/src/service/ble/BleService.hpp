@@ -24,6 +24,7 @@ struct BleCharacteristicInfo {
     std::string uuid;
     bool notifying;
     std::string value;
+    std::vector<std::string> properties; // e.g., "read", "write", "notify"
 };
 
 struct BleServiceInfo {
@@ -49,7 +50,7 @@ public:
     bool connectToDevice(const std::string& mac);
     bool enableHeartRateNotifications(const std::string& deviceMac);
     bool startScanUntilFound(const std::string& targetMac, int timeoutSeconds = 10);
-    std::vector<BleServiceInfo> getServicesAndCharacteristics();
+    std::vector<BleServiceInfo> getServicesAndCharacteristics(const std::string& mac);
     // bool enableServices(const std::string& mac, const std::vector<std::string>& serviceUUIDs);
     bool enableServices(const std::string& mac);
     void printScanResults(const std::vector<BleDeviceInfo>& devices);

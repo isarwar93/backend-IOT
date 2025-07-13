@@ -1,5 +1,5 @@
 #include "BleService.hpp"
-#include "oatpp/web/server/api/ApiController.hpp"
+#include "config/LogAdapt.hpp"
 #include <nlohmann/json.hpp>
 #include <gio/gio.h>
 #include <regex>
@@ -7,11 +7,11 @@
 
 bool BleService::start() {
     if (running) return true;
-    std::cout << "BLE Service started\n";
+    LOGI("Starting BLE Service.");
     running = true;
     // TODO: connect to device, subscribe to notifications
     if (!initBluez()) {
-        std::cerr << "Failed to initialize BlueZ." << std::endl;
+        LOGE("Failed to initialize BlueZ.");
         return false;
     }
 
@@ -46,7 +46,6 @@ void BleService::stop() {
     g_main_loop_unref(m_loop);
     m_loop = nullptr;
     running = false;
-
 }
 
 
@@ -528,17 +527,17 @@ bool BleService::connectToDevice(const std::string& jsonmac) {
         g_object_unref(conn);
         return false;
     }
-    OATPP_LOGi("BleService.cpp", "connected, returning");
+    LOGI("connected, returning");
 
     currentConnectedDevices.emplace_back();
     g_object_unref(conn);
     return true;
 }
 
-std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics() {
+std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics(const std::string& mac) {
     // As services and characteristics will be required after the connection
     // established, therefore, mac address can be taken from global private variable
-    const std::string& mac = macAddress;
+    // const std::string& mac = macAddress;
     std::vector<BleServiceInfo> services;
     std::string basePath = "/org/bluez/hci0/dev_" + mac;
     for (auto& ch : basePath) if (ch == ':') ch = '_';
@@ -571,7 +570,6 @@ std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics() {
 
         while (g_variant_iter_loop(ifaceIter, "{s@a{sv}}", &ifaceName, &propDict)) {
             std::string iface(ifaceName);
-
             if (iface == "org.bluez.GattService1") {
                 std::string uuid;
                 GVariantIter* props;
@@ -584,22 +582,45 @@ std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics() {
                 }
                 g_variant_iter_free(props);
                 serviceMap[path] = BleServiceInfo{uuid, {}};
-
-            } else if (iface == "org.bluez.GattCharacteristic1") {
+            }
+            else if (iface == "org.bluez.GattCharacteristic1") {
                 std::string uuid, parent;
+                bool notifying = false;
+
                 GVariantIter* props;
                 g_variant_get(propDict, "a{sv}", &props);
                 const gchar* key;
                 GVariant* val;
+                BleCharacteristicInfo cInfo;
 
                 while (g_variant_iter_loop(props, "{sv}", &key, &val)) {
-                    if (std::string(key) == "UUID") uuid = g_variant_get_string(val, nullptr);
-                    else if (std::string(key) == "Service") parent = g_variant_get_string(val, nullptr);
+                    std::string keyStr = key;
+                    if (keyStr == "UUID") {
+                        uuid = g_variant_get_string(val, nullptr);
+                    } else if (keyStr == "Service") {
+                        parent = g_variant_get_string(val, nullptr);
+                    } else if (keyStr == "Notifying") {
+                        notifying = g_variant_get_boolean(val);
+                    } else if (keyStr == "Flags") {
+                        if (g_variant_is_of_type(val, G_VARIANT_TYPE("as"))) {
+                            GVariantIter* flagIter;
+                            gchar* flagStr;
+                            g_variant_get(val, "as", &flagIter);
+                            while (g_variant_iter_loop(flagIter, "s", &flagStr)) {
+                                cInfo.properties.push_back(flagStr);  // append to vector
+                            }
+                            g_variant_iter_free(flagIter);
+                        }
+                    }
                 }
                 g_variant_iter_free(props);
 
                 if (!uuid.empty() && !parent.empty()) {
-                    serviceMap[parent].characteristics.push_back({uuid, ""});
+                    
+                    cInfo.uuid = uuid;
+                    cInfo.value = objectPath; // Use object path as value
+                    cInfo.notifying = notifying;
+                    serviceMap[parent].characteristics.push_back(cInfo);
                 }
             }
         }
