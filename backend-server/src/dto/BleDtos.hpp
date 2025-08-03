@@ -20,7 +20,6 @@ class ConnectRequestDto : public oatpp::DTO {
  */
 class SelectServicesRequestDto : public oatpp::DTO {
     DTO_INIT(SelectServicesRequestDto, DTO)
-
     DTO_FIELD(oatpp::String, mac);
     DTO_FIELD(oatpp::List<oatpp::String>, uuids);
 };
@@ -30,10 +29,9 @@ class SelectServicesRequestDto : public oatpp::DTO {
  */
 class CharacteristicDto : public oatpp::DTO {
     DTO_INIT(CharacteristicDto, DTO)
-
+    DTO_FIELD(oatpp::String, name);
+    DTO_FIELD(oatpp::String, path);
     DTO_FIELD(oatpp::String, uuid);
-    DTO_FIELD(oatpp::String, value);
-
     DTO_FIELD(oatpp::Boolean, notifying);
     DTO_FIELD(oatpp::Vector<oatpp::String>, properties); 
 };
@@ -43,7 +41,8 @@ class CharacteristicDto : public oatpp::DTO {
  */
 class ServiceDto : public oatpp::DTO {
     DTO_INIT(ServiceDto, DTO)
-
+    DTO_FIELD(oatpp::String, name);
+    DTO_FIELD(oatpp::String, path);
     DTO_FIELD(oatpp::String, uuid);
     DTO_FIELD(oatpp::List<oatpp::Object<CharacteristicDto>>, characteristics);
 };
@@ -53,7 +52,6 @@ class ServiceDto : public oatpp::DTO {
  */
 class DeviceDto : public oatpp::DTO {
     DTO_INIT(DeviceDto, DTO)
-
     DTO_FIELD(oatpp::String, mac);
     DTO_FIELD(oatpp::String, name);
     DTO_FIELD(oatpp::Int32, rssi);
@@ -61,9 +59,13 @@ class DeviceDto : public oatpp::DTO {
 
 class StatusDto : public oatpp::DTO {
     DTO_INIT(StatusDto, DTO)
-
     DTO_FIELD(oatpp::Boolean, isConnected);
     DTO_FIELD(oatpp::Boolean, isPaired);
+};
+
+class doubleValueDto : public oatpp::DTO {
+    DTO_INIT(doubleValueDto, DTO)
+    DTO_FIELD(oatpp::Float64, doubleValue);
 };
 
 #include OATPP_CODEGEN_END(DTO)

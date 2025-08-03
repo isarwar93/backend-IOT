@@ -23,7 +23,6 @@ public:
     ENDPOINT_ASYNC("GET", "/api/ble/scan", scanDevices){
         ENDPOINT_ASYNC_INIT(scanDevices)
         Action act() override {
-            LOGI("/api/ble/scan endpoint");
             auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
             if (!bleService) {
                 auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
@@ -48,8 +47,6 @@ public:
     ENDPOINT_ASYNC("POST", "/api/ble/connect", connectToDevice) {
         ENDPOINT_ASYNC_INIT(connectToDevice)
         Action act() override {
-            LOGI("POST /api/ble/connect endpoint");
-            // Read the body asynchronously
             return request->readBodyToStringAsync().callbackTo(&connectToDevice::onBodyRead);
         }
         Action onBodyRead(const oatpp::String& body) {
@@ -72,7 +69,6 @@ public:
     ENDPOINT_ASYNC("OPTIONS", "/api/ble/connect", optionsConnect) {
         ENDPOINT_ASYNC_INIT(optionsConnect)
         Action act() override {
-            OATPP_LOGi("Ble", "OPTIONS /api/ble/connect endpoint");
             auto resp = controller->createResponse(Status::CODE_200, "");
             resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
             resp->putHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -85,16 +81,10 @@ public:
         info->addResponse<String>(Status::CODE_200, "text/plain");
         info->pathParams.add<String>("mac").description = "MAC address of the device"; // add param1 info
     }
-
-    // ENDPOINT_ASYNC("GET", "/api/ble/services", getServices) {
     ENDPOINT_ASYNC("GET", "/api/ble/services/{mac}", getServices) {
         ENDPOINT_ASYNC_INIT(getServices)
         Action act() override {
-         
-
             auto mac = request->getPathVariable("mac");
-             
-            LOGI("GET /api/ble/services endpoint received-> mac: {}", mac);
             OATPP_ASSERT_HTTP(mac , Status::CODE_400, "mac should not be null");
             
             auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
@@ -106,6 +96,8 @@ public:
             oatpp::List<oatpp::Object<ServiceDto>> result = oatpp::List<oatpp::Object<ServiceDto>>::createShared();
             for (const auto& s : services) {
                 auto sDto = ServiceDto::createShared();
+                sDto->name = s.name;
+                sDto->path = s.path;
                 sDto->uuid = s.uuid;
                 sDto->characteristics = oatpp::List<oatpp::Object<CharacteristicDto>>::createShared();
 
@@ -117,10 +109,10 @@ public:
                     for (const auto& p : c.properties) {
                         cDto->properties->push_back(p.c_str());
                     }
-                    cDto->notifying = c.notifying;
+                    cDto->name = c.name;
+                    cDto->path = c.path;
                     cDto->uuid = c.uuid;
-                    cDto->value = c.value;
-
+                    cDto->notifying = c.notifying;
                     sDto->characteristics->push_back(cDto);
                 }
                 result->push_back(sDto);
@@ -128,6 +120,109 @@ public:
 
             auto resp = controller->createDtoResponse(Status::CODE_200, result);
             resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            return _return(resp);
+        }
+    };
+
+
+    ENDPOINT_ASYNC("POST", "/api/ble/notify", toggleNotify) {
+        ENDPOINT_ASYNC_INIT(toggleNotify)
+        Action act() override {
+            // Read the body asynchronously
+            return request->readBodyToStringAsync().callbackTo(&toggleNotify::onBodyRead);
+        }
+        Action onBodyRead(const oatpp::String& body) {
+            if (!body) {
+                auto resp = controller->createResponse(Status::CODE_400, "Empty body");
+                return _return(resp);
+            }
+            auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
+            if (!bleService) {
+                auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
+                return _return(resp);
+            }
+
+            bool ok = bleService->toggleNotify(body);
+            
+            auto resp = controller->createDtoResponse(Status::CODE_200, oatpp::Boolean(ok));
+            resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            return _return(resp);
+        }
+    };
+    //For the browser to understand which headers are needed
+    ENDPOINT_ASYNC("OPTIONS", "/api/ble/notify", optionsNotify) {
+        ENDPOINT_ASYNC_INIT(optionsNotify)
+        Action act() override {
+            auto resp = controller->createResponse(Status::CODE_200, "");
+            resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            resp->putHeader("Access-Control-Allow-Headers", "Content-Type");
+            return _return(resp);
+        }
+    };
+
+    ENDPOINT_INFO(getRead) {
+        info->summary = "Getting a quick read value through async get restAPI.";
+        info->addResponse<String>(Status::CODE_200, "text/plain");
+        info->pathParams.add<String>("mac").description = "MAC address of the device"; // adding param1 info
+        info->pathParams.add<String>("uuid").description = "UUID of the service"; // adding param2 info
+    }
+    ENDPOINT_ASYNC("GET", "/api/ble/read/mac=${mac}/uuid=${uuid}", getRead) {
+        ENDPOINT_ASYNC_INIT(getRead)
+        Action act() override {
+            auto mac = request->getPathVariable("mac");
+            auto uuid = request->getPathVariable("uuid");
+            OATPP_ASSERT_HTTP(mac , Status::CODE_400, "mac should not be null");
+            OATPP_ASSERT_HTTP(uuid , Status::CODE_400, "uuid should not be null");
+            
+            auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
+            if (!bleService) {
+                auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
+                return _return(resp);
+            }
+            auto value = bleService->readService(mac,uuid);
+            oatpp::List<oatpp::Object<doubleValueDto>> result = oatpp::List<oatpp::Object<doubleValueDto>>::createShared();
+            auto cDto = doubleValueDto::createShared();
+            cDto->doubleValue = value;
+            result->push_back(cDto);
+
+            auto resp = controller->createDtoResponse(Status::CODE_200, result);
+            resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            return _return(resp);
+        }
+    };
+  
+
+    ENDPOINT_ASYNC("POST", "/api/ble/write", writeService) {
+        ENDPOINT_ASYNC_INIT(writeService)
+        Action act() override {
+            // Read the body asynchronously
+            return request->readBodyToStringAsync().callbackTo(&writeService::onBodyRead);
+        }
+        Action onBodyRead(const oatpp::String& body) {
+            if (!body) {
+                auto resp = controller->createResponse(Status::CODE_400, "Empty body");
+                return _return(resp);
+            }
+            auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
+            if (!bleService) {
+                auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
+                return _return(resp);
+            }
+
+            bool ok = bleService->writeService(body);
+            
+            auto resp = controller->createDtoResponse(Status::CODE_200, oatpp::Boolean(ok));
+            resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            return _return(resp);
+        }
+    };
+    //For the browser to understand which headers are needed
+    ENDPOINT_ASYNC("OPTIONS", "/api/ble/write", optionsWrite) {
+        ENDPOINT_ASYNC_INIT(optionsWrite)
+        Action act() override {
+            auto resp = controller->createResponse(Status::CODE_200, "");
+            resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            resp->putHeader("Access-Control-Allow-Headers", "Content-Type");
             return _return(resp);
         }
     };
@@ -150,13 +245,6 @@ public:
                 auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
                 return _return(resp);
             }
-
-            // //TODO: May be in json
-            // std::vector<std::string> selected;
-            // for (const auto& uuid : *body->uuids) {
-            //     selected.push_back((const char*)uuid->c_str());
-            // }
-
             bool ok = bleService->enableServices(body);
             
             auto resp = controller->createDtoResponse(Status::CODE_200, oatpp::Boolean(ok));
@@ -180,7 +268,7 @@ public:
         ENDPOINT_ASYNC_INIT(disconnectDevice)
         Action act() override {
             // Read the body asynchronously
-            return request->readBodyToStringAsync().callbackTo(&connectToDevice::onBodyRead);
+            return request->readBodyToStringAsync().callbackTo(&disconnectDevice::onBodyRead);
         }
         Action onBodyRead(const oatpp::String& body) {
             if (!body) {
@@ -192,8 +280,6 @@ public:
                 auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
                 return _return(resp);
             }
-
-            //TODO: May be in json
             bool ok = bleService->disconnectDevice(body);
             
             auto resp = controller->createDtoResponse(Status::CODE_200, oatpp::Boolean(ok));
@@ -217,7 +303,7 @@ public:
         ENDPOINT_ASYNC_INIT(removeDevice)
         Action act() override {
             // Read the body asynchronously
-            return request->readBodyToStringAsync().callbackTo(&connectToDevice::onBodyRead);
+            return request->readBodyToStringAsync().callbackTo(&removeDevice::onBodyRead);
         }
         Action onBodyRead(const oatpp::String& body) {
             if (!body) {
@@ -254,7 +340,7 @@ public:
         ENDPOINT_ASYNC_INIT(pairDevice)
         Action act() override {
             // Read the body asynchronously
-            return request->readBodyToStringAsync().callbackTo(&connectToDevice::onBodyRead);
+            return request->readBodyToStringAsync().callbackTo(&pairDevice::onBodyRead);
         }
         Action onBodyRead(const oatpp::String& body) {
             if (!body) {
@@ -292,7 +378,7 @@ public:
         ENDPOINT_ASYNC_INIT(cancelPairDevice)
         Action act() override {
             // Read the body asynchronously
-            return request->readBodyToStringAsync().callbackTo(&connectToDevice::onBodyRead);
+            return request->readBodyToStringAsync().callbackTo(&cancelPairDevice::onBodyRead);
         }
         Action onBodyRead(const oatpp::String& body) {
             if (!body) {

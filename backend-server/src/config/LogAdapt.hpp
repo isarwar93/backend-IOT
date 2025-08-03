@@ -21,7 +21,7 @@ constexpr const char* extract_filename(const char* path) {
   oatpp::base::Log::stream( \
     LEVEL, \
     "", \
-    "[{}:{} {}] " FMT, \
+    "[{} {} {}] " FMT, \
     extract_filename(__FILE__), __LINE__, __func__, ##__VA_ARGS__)
 
 
