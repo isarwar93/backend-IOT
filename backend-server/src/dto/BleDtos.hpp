@@ -63,9 +63,9 @@ class StatusDto : public oatpp::DTO {
     DTO_FIELD(oatpp::Boolean, isPaired);
 };
 
-class doubleValueDto : public oatpp::DTO {
-    DTO_INIT(doubleValueDto, DTO)
-    DTO_FIELD(oatpp::Float64, doubleValue);
+class StringValueDto : public oatpp::DTO {
+    DTO_INIT(StringValueDto, DTO)
+    DTO_FIELD(oatpp::String, stringValue);
 };
 
 #include OATPP_CODEGEN_END(DTO)

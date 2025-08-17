@@ -1,4 +1,3 @@
-
 #include "Room.hpp"
 #include "./AppComponent.hpp"
 #include "config/Constants.hpp"

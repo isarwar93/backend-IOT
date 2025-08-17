@@ -16,6 +16,11 @@
 #include OATPP_CODEGEN_BEGIN(ApiController)
 
 class BleController : public oatpp::web::server::api::ApiController {
+private:
+    typedef BleController __ControllerType;
+    OATPP_COMPONENT(std::shared_ptr<oatpp::network::ConnectionHandler>, 
+                    graphWebSocketConnHandler, "graphwebsocket");
+
 public:
     BleController(OATPP_COMPONENT(std::shared_ptr<ObjectMapper>, objectMapper))
         : oatpp::web::server::api::ApiController(objectMapper) {}
@@ -141,12 +146,17 @@ public:
                 auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
                 return _return(resp);
             }
-
-            bool ok = bleService->toggleNotify(body);
-            
-            auto resp = controller->createDtoResponse(Status::CODE_200, oatpp::Boolean(ok));
+            std::string value = bleService->toggleNotify(body);
+            oatpp::List<oatpp::Object<StringValueDto>> result = oatpp::List<oatpp::Object<StringValueDto>>::createShared();
+            auto cDto = StringValueDto::createShared();
+            cDto->stringValue = value;
+            result->push_back(cDto);
+            auto resp = controller->createDtoResponse(Status::CODE_200, result);
             resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
             return _return(resp);
+            //auto resp = controller->createDtoResponse(Status::CODE_200, oatpp::Boolean(ok));
+            //resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            //return _return(resp);
         }
     };
     //For the browser to understand which headers are needed
@@ -180,9 +190,9 @@ public:
                 return _return(resp);
             }
             auto value = bleService->readService(mac,uuid);
-            oatpp::List<oatpp::Object<doubleValueDto>> result = oatpp::List<oatpp::Object<doubleValueDto>>::createShared();
-            auto cDto = doubleValueDto::createShared();
-            cDto->doubleValue = value;
+            oatpp::List<oatpp::Object<StringValueDto>> result = oatpp::List<oatpp::Object<StringValueDto>>::createShared();
+            auto cDto = StringValueDto::createShared();
+            cDto->stringValue = value;
             result->push_back(cDto);
 
             auto resp = controller->createDtoResponse(Status::CODE_200, result);
@@ -516,6 +526,42 @@ public:
             resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
             resp->putHeader("Access-Control-Allow-Headers", "Content-Type");
             return _return(resp);
+        }
+    };
+
+
+    
+    // ENDPOINT_ASYNC("GET", "/api/ble/read/mac=${mac}/uuid=${uuid}", getRead) {
+    //     ENDPOINT_ASYNC_INIT(getRead)
+    //     Action act() override {
+           
+    //     }
+    // };
+  
+    // ENDPOINT_INFO(WSBLEGraph) {
+    //     info->summary = "Getting a quick read value through async get restAPI.";
+    //     info->addResponse<String>(Status::CODE_200, "text/plain");
+    //     info->pathParams.add<String>("mac").description = "MAC address of the device"; // adding param1 info
+    //     info->pathParams.add<String>("uuid").description = "UUID of the service"; // adding param2 info
+    // }
+    ENDPOINT_ASYNC("GET", "ws/ble/graph/mac=${mac}/uuid=${uuid}", WSBLEGraph) {
+        ENDPOINT_ASYNC_INIT(WSBLEGraph)
+
+        Action act() override {
+            auto mac = request->getPathVariable("mac");
+            auto uuid = request->getPathVariable("uuid");
+            OATPP_ASSERT_HTTP(mac , Status::CODE_400, "mac should not be null");
+            OATPP_ASSERT_HTTP(uuid , Status::CODE_400, "uuid should not be null");
+            // resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+
+            auto response = oatpp::websocket::Handshaker::serversideHandshake(
+                request->getHeaders(), controller->graphWebSocketConnHandler);
+
+            auto parameters = std::make_shared<oatpp::network::ConnectionHandler::ParameterMap>();
+            (*parameters)["mac"] = mac;
+            (*parameters)["uuid"] = uuid;
+            response->setConnectionUpgradeParameters(parameters);
+            return _return(response);
         }
     };
 

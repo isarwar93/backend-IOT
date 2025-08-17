@@ -1,8 +1,62 @@
 #include "BleService.hpp"
 #include "config/LogAdapt.hpp"
 #include <nlohmann/json.hpp>
-#include <gio/gio.h>
 #include <regex>
+
+#include "websocket/GraphWebSocket.hpp"
+
+bool BleService::initBluez() {
+    adapterPath = findAdapter();
+    return !adapterPath.empty();
+}
+
+std::string BleService::findAdapter() {
+    // Connect to the system bus
+    gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, nullptr);
+    if (!gDBusConn) return "";
+
+    GVariant* result = g_dbus_connection_call_sync(
+        gDBusConn,
+        "org.bluez",
+        "/",
+        "org.freedesktop.DBus.ObjectManager",
+        "GetManagedObjects",
+        nullptr,
+        G_VARIANT_TYPE("(a{oa{sa{sv}}})"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        nullptr,
+        nullptr
+    );
+
+    if (!result) {
+        g_object_unref(gDBusConn);
+        return "";
+    }
+
+    GVariantIter* iter;
+    g_variant_get(result, "(a{oa{sa{sv}}})", &iter);
+
+    gchar* objectPath;
+    GVariantIter* interfaces;
+
+    while (g_variant_iter_loop(iter, "{oa{sa{sv}}}", &objectPath, &interfaces)) {
+        gchar* interfaceName;
+        GVariantIter* properties;
+        while (g_variant_iter_loop(interfaces, "{sa{sv}}", &interfaceName, &properties)) {
+            if (std::string(interfaceName) == "org.bluez.Adapter1") {
+                std::string path = objectPath;
+                // Do NOT free iter, interfaces, or properties
+                g_variant_unref(result);
+                g_object_unref(gDBusConn);
+                return path;
+            }
+        }
+    }
+    g_variant_unref(result);
+    g_object_unref(gDBusConn);
+    return "";
+}
 
 
 bool BleService::start() {
@@ -19,15 +73,26 @@ bool BleService::start() {
 void BleService::stop() {
     LOGI("BLE Service stopped");
     running = false;
-    // TODO: disconnect from device
-    if (m_loop) {
-        g_main_loop_quit(m_loop);
+    //TODO: Clear the connection and disconnect
+    if (gDBusConn) {
+        g_dbus_connection_call_sync(
+            gDBusConn, "org.bluez", adapterPath.c_str(), "org.bluez.Adapter1",
+            "StopDiscovery", nullptr, nullptr,
+            G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr
+        );
     }
-    if (m_loopThread.joinable()) {
-        m_loopThread.join();
+    // Unsubscribe from all signals
+    // for (auto id : signalSubscriptionIds) {
+    //     g_dbus_connection_signal_unsubscribe(conn, id);
+    // }
+    // signalSubscriptionIds.clear();
+    // Unref the connection
+
+    if (gDBusConn) {
+        g_object_unref(gDBusConn);
+        gDBusConn = nullptr;
     }
-    g_main_loop_unref(m_loop);
-    m_loop = nullptr;
+    numOfGraphsPerChar.clear();
     running = false;
 }
 
@@ -73,95 +138,39 @@ void BleService::onHeartRateReceived(float hr) {
     latestValue.store(hr);
 }
 
-bool BleService::initBluez() {
-    adapterPath = findAdapter();
-    return !adapterPath.empty();
-}
-
-
-std::string BleService::findAdapter() {
-    GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, nullptr);
-    if (!conn) return "";
-
-    GVariant* result = g_dbus_connection_call_sync(
-        conn,
-        "org.bluez",
-        "/",
-        "org.freedesktop.DBus.ObjectManager",
-        "GetManagedObjects",
-        nullptr,
-        G_VARIANT_TYPE("(a{oa{sa{sv}}})"),
-        G_DBUS_CALL_FLAGS_NONE,
-        -1,
-        nullptr,
-        nullptr
-    );
-
-    if (!result) {
-        g_object_unref(conn);
-        return "";
-    }
-
-    GVariantIter* iter;
-    g_variant_get(result, "(a{oa{sa{sv}}})", &iter);
-
-    gchar* objectPath;
-    GVariantIter* interfaces;
-
-    while (g_variant_iter_loop(iter, "{oa{sa{sv}}}", &objectPath, &interfaces)) {
-        gchar* interfaceName;
-        GVariantIter* properties;
-        while (g_variant_iter_loop(interfaces, "{sa{sv}}", &interfaceName, &properties)) {
-            if (std::string(interfaceName) == "org.bluez.Adapter1") {
-                std::string path = objectPath;
-                // Do NOT free iter, interfaces, or properties
-                g_variant_unref(result);
-                g_object_unref(conn);
-                return path;
-            }
-        }
-    }
-
-    g_variant_unref(result);
-    g_object_unref(conn);
-    return "";
-}
-
 
 std::vector<BleDeviceInfo> BleService::scanDevices(int timeoutSeconds) {
     std::vector<BleDeviceInfo> devices;
     GError* error = nullptr;
 
-    GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
-    if (!conn) {
+    gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
+    if (!gDBusConn) {
         std::cerr << "❌ Failed to connect to system bus: " << error->message << "\n";
         g_error_free(error);
         return devices;
     }
 
     g_dbus_connection_call_sync(
-        conn, "org.bluez", "/org/bluez/hci0", "org.bluez.Adapter1",
+        gDBusConn, "org.bluez", "/org/bluez/hci0", "org.bluez.Adapter1",
         "StartDiscovery", nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1,
         nullptr, &error);
 
     if (error) {
         std::cerr << "❌ StartDiscovery failed: " << error->message << "\n";
         g_error_free(error);
-        g_object_unref(conn);
+        g_object_unref(gDBusConn);
         return devices;
     }
-
     std::this_thread::sleep_for(std::chrono::seconds(timeoutSeconds));
-
     GVariant* reply = g_dbus_connection_call_sync(
-        conn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
+        gDBusConn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
         "GetManagedObjects", nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1,
         nullptr, &error);
 
     if (!reply) {
         std::cerr << "❌ GetManagedObjects failed: " << error->message << "\n";
         g_error_free(error);
-        g_object_unref(conn);
+        g_object_unref(gDBusConn);
         return devices;
     }
 
@@ -203,18 +212,17 @@ std::vector<BleDeviceInfo> BleService::scanDevices(int timeoutSeconds) {
             }
         }
         g_variant_iter_free(ifaceIter);
-
         devices.push_back({mac, name, rssi});
     }
     g_variant_iter_free(iter);
     g_variant_unref(reply);
 
     g_dbus_connection_call_sync(
-        conn, "org.bluez", "/org/bluez/hci0", "org.bluez.Adapter1",
+        gDBusConn, "org.bluez", "/org/bluez/hci0", "org.bluez.Adapter1",
         "StopDiscovery", nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1,
         nullptr, nullptr);
 
-    g_object_unref(conn);
+    g_object_unref(gDBusConn);
     return devices;
 }
 
@@ -223,12 +231,9 @@ std::string parseMacFlexible(const std::string& input) {
     try {
         // Try to parse as JSON
         nlohmann::json j = nlohmann::json::parse(input);
-
         if (j.is_string()) {
-            // Case: raw JSON string like "AA:BB:CC:DD:EE:FF"
             return j.get<std::string>();
         } else if (j.is_object() && j.contains("mac") && j["mac"].is_string()) {
-            // Case: JSON object like { "mac": "AA:BB:CC:DD:EE:FF" }
             return j["mac"].get<std::string>();
         }
     } catch (...) {
@@ -241,21 +246,20 @@ std::string parseMacFlexible(const std::string& input) {
     if (std::regex_match(input, match, quoteRegex)) {
         return match[1];
     }
-
-    // Return as-is
     return input;
 }
+
 bool BleService::connectToDevice(const std::string& jsonmac) {
     std::string mac =  parseMacFlexible(jsonmac);
     std::string path = "/org/bluez/hci0/dev_" + mac;
     for (auto& ch : path) if (ch == ':') ch = '_';
 
     GError* error = nullptr;
-    GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
-    if (!conn) return false;
-    std::cout<<"path: "<<path<<std::endl;
+    gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
+    if (!gDBusConn) return false;
+    LOGI("Connecting to device at path: {}", path);
     g_dbus_connection_call_sync(
-        conn, "org.bluez", 
+        gDBusConn, "org.bluez", 
         path.c_str(), 
         "org.bluez.Device1",
         "Connect", 
@@ -267,13 +271,13 @@ bool BleService::connectToDevice(const std::string& jsonmac) {
     if (error) {
         std::cerr << "❌ Connect failed: " << error->message << "\n";
         g_error_free(error);
-        g_object_unref(conn);
+        g_object_unref(gDBusConn);
         return false;
     }
     LOGI("connected, returning");
 
     currentConnectedDevices.emplace_back();
-    g_object_unref(conn);
+    g_object_unref(gDBusConn);
     return true;
 }
 
@@ -286,11 +290,11 @@ std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics(const std:
     for (auto& ch : basePath) if (ch == ':') ch = '_';
 
     GError* error = nullptr;
-    GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
-    if (!conn) return services;
+    gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
+    if (!gDBusConn) return services;
 
     GVariant* reply = g_dbus_connection_call_sync(
-        conn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
+        gDBusConn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
         "GetManagedObjects", nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1,
         nullptr, &error);
 
@@ -378,7 +382,7 @@ std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics(const std:
 
     g_variant_iter_free(iter);
     g_variant_unref(reply);
-    g_object_unref(conn);
+    g_object_unref(gDBusConn);
 
     for (auto& [_, svc] : serviceMap) {
         services.push_back(std::move(svc));
@@ -388,73 +392,99 @@ std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics(const std:
 
 bool BleService::enableNotification(const std::string& path) {
 
-    GError* error = nullptr;
-    GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
-    if (!conn) {
-        LOGE("❌ Failed to connect to system bus: ", error->message);
-        g_error_free(error);
+    bool ret = startLoopFor(path);
+    if (!ret) {
+        LOGE("Failed to start loop for characteristic: {}", path);
         return false;
     }
 
-    GVariant* reply = g_dbus_connection_call_sync(
-        conn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
-        "GetManagedObjects", nullptr, nullptr,
-        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error
-    );
-
-    if (!reply) {
-        std::cerr << "❌ GetManagedObjects failed: " << error->message << "\n";
-        g_error_free(error);
-        g_object_unref(conn);
-        return false;
-    }
-
-    GVariantIter* objIter = nullptr;
-    g_variant_get(reply, "(a{oa{sa{sv}}})", &objIter);
-
-    std::string heartCharPath = path;
-    std::cout << "Starting notifications on: " << heartCharPath << "\n";
-
-    if (heartCharPath.empty()) {
-        std::cerr << "Heart Rate characteristic path is empty.\n";
-        g_object_unref(conn);
-        return false;
-    }
-
-    g_dbus_connection_call_sync(
-        conn,
-        "org.bluez", heartCharPath.c_str(),
-        "org.bluez.GattCharacteristic1", "StartNotify",
-        nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error
-    );
-
-    if (error) {
-        LOGE("StartNotify failed");
-        g_error_free(error);
-        g_object_unref(conn);
-        return false;
-    }
-    LOGI("Notifications enabled for: {} subscribing to properties changed", heartCharPath);
-    g_dbus_connection_signal_subscribe(
-        conn,
-        "org.bluez", "org.freedesktop.DBus.Properties", "PropertiesChanged",
-        heartCharPath.c_str(), "org.bluez.GattCharacteristic1",
-        G_DBUS_SIGNAL_FLAGS_NONE,
-        &BleService::onPropertiesChanged,
-        this, nullptr
-    );
-
-    m_loop = g_main_loop_new(nullptr, FALSE);
-    m_loopThread = std::thread([this] {
-        g_main_loop_run(m_loop);
-    });
-
+    numOfActiveNotifications++;
+    LOGI("Active notifications count: {}", numOfActiveNotifications);
+    // // GMainLoop* m_loop = nullptr;
+    // std::thread m_loopThread;
+    // GMainLoop* m_loop = g_main_loop_new(nullptr, FALSE);
+    // m_loopThread = std::thread([this] {
+    //     g_main_loop_run(m_loop);
+    // });
+    // LOGI("Saving loop and thread for characteristic: {}", path);
+    // saveThreadsCharacteristics(path, m_loop, std::move(m_loopThread));
     //TODO: May be needed to disconnect
     //g_variant_unref(reply);
     //g_object_unref(conn);
     return true;
 }
 
+
+//disableHeartRateNotifications
+bool BleService::disableNotification(const std::string& path) {
+    if (path.empty()) {
+        std::cerr << "❌ Characteristic path is empty.\n";
+        return false;
+    }
+
+    stopLoopFor(path);
+
+    bool ret = false;
+    if (ret) {
+        LOGE("Failed to start loop for characteristic: {}", path);
+        return false;
+    }
+    
+    numOfActiveNotifications--;
+    if (numOfActiveNotifications < 0) {
+        numOfActiveNotifications = 0; // Ensure it doesn't go negative
+    }
+    LOGI("Active notifications count: {}", numOfActiveNotifications);
+
+    return true; 
+    //TODO: check if the notification was successfully disabled
+    // auto item = mapThreadsCharacteristics.find(path);
+    // if (item == mapThreadsCharacteristics.end()) {
+    //     LOGE("❌ No loop found for characteristic: {}", path);
+    //     return false;
+    // }
+    // GMainLoop* m_loop = item->second.first; // Get the GMainLoop
+    // std::thread m_loopThread = std::move(item->second.second); // Get the thread
+
+    // // Unsubscribe from the signal
+    // GError* error = nullptr;
+    // GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
+    // if (!conn) {
+    //     LOGE("Failed to connect to system bus: {} ", error->message);
+    //     g_error_free(error);
+    //     return false;
+    // }
+
+    // g_dbus_connection_call_sync(
+    //     conn,
+    //     "org.bluez",
+    //     path.c_str(),
+    //     "org.bluez.GattCharacteristic1",
+    //     "StopNotify",
+    //     nullptr, nullptr,
+    //     G_DBUS_CALL_FLAGS_NONE,
+    //     -1, nullptr, &error
+    // );
+
+    // if (error) {
+    //     std::cerr << "❌ StopNotify failed: " << error->message << "\n";
+    //     g_error_free(error);
+    //     g_object_unref(conn);
+    //     return false;
+    // }
+
+    // if (m_loop) {
+    //     g_main_loop_quit(m_loop);
+    //     if (m_loopThread.joinable()) {
+    //         m_loopThread.join();
+    //     }
+    //     g_main_loop_unref(m_loop);
+    //     m_loop = nullptr;
+    // }
+
+    // g_object_unref(conn);
+    // return true;
+}
 
 void BleService::handleHeartRateData(const guint8* data, gsize len) {
     std::cout << "📦 Data (" << len << " bytes): ";
@@ -473,32 +503,335 @@ void BleService::handleHeartRateData(const guint8* data, gsize len) {
     onHeartRateReceived(static_cast<float>(heartRate));
 }
 
-
-bool BleService::toggleNotify(const std::string& body){
+//return number of floating point values
+std::string BleService::toggleNotify(const std::string& body){
     LOGI("Toggling notify for  {}",body);
     // json::json json_data = json::parse(body);
     auto json_data = nlohmann::json::parse(body);
 
+    auto newJson = nlohmann::json::object();
+
     if (!json_data.contains("mac") || !json_data.contains("uuid")) {
-        LOGE("❌ Invalid request: 'mac' and 'uuid' are required.");
-        return false;
+        LOGE("Invalid request: 'mac' and 'uuid' are required.");
+        newJson["status"] = "failed";
+        newJson["message"] = "Invalid request: 'mac' and 'uuid' are required.";
+        return newJson.dump();
     }
   
     std::string path = json_data["path"];
     bool enable = json_data["enable"];
     if (enable) {
         LOGI("Enabling notification");
-        return enableNotification(path);
+        //TODO:number of values
+        //return enableNotification(path);
+
+        firstNotificationReceived.store(true);
+        int ret = enableNotification(path);
+        if (!ret) {
+            firstNotificationReceived.store(false);
+            LOGE("Failed to enable notification for path: {}", path);
+            newJson["status"] = "failed";
+            newJson["message"] = "Failed to enable notification.";
+            return newJson.dump();
+        }
+        int timeoutSeconds = 200;
+        while(firstNotificationReceived.load() && timeoutSeconds > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            timeoutSeconds--;
+        }
+        if (timeoutSeconds <= 0) {
+            LOGE("Timeout waiting for first notification on path: {}", path);
+            newJson["status"] = "failed";
+            newJson["message"] = "Timeout waiting for first notification.";
+            return newJson.dump();
+        }
+        //LOGI("numOfFloatsReceived: {}", numOfFloatsReceived.load());
+        numOfGraphsPerChar[path] = numOfFloatsReceived.load(); 
+        LOGI("First notification received, number of active notifications: {}", numOfActiveNotifications);
+        newJson["number_of_values"] = numOfFloatsReceived.load();
+        numOfFloatsReceived.store(0); // Reset for next use
+
     } else {
         LOGI("Disabling notification");
-        return disableNotification(path);
+        //return disableNotification(path);
+        disableNotification(path);
+    }
+    LOGI("Returning response for toggle notify");
+    newJson["status"] = "success";
+    newJson["message"] = enable ? "Notification enabled" : "Notification disabled";
+   //TODO: newJson["number_of_values"] = ;
+    return newJson.dump();
+}
+
+
+void BleService::parseHeartRate(uint8_t* data, gsize len) {
+    
+    if (len < 2) return;
+
+    uint8_t flags = data[0];
+    uint16_t hr;
+    if (flags & 0x01) {
+        hr = data[1] | (data[2] << 8);
+    } else {
+        hr = data[1];
+    }
+
+    LOGI("Heart Rate: {} bpm", hr);
+}
+
+void BleService::onPropertiesChanged(GDBusConnection*,
+                                     const gchar* sender_name,
+                                     const gchar* object_path, // characteristic path
+                                     const gchar* interface_name,
+                                     const gchar* signal_name,
+                                     GVariant* parameters,
+                                     gpointer user_data)
+{
+    auto* self = static_cast<BleService*>(user_data);
+    if (!self) return;
+    //std::lock_guard<std::mutex> lk(self->m_mx);
+
+    LOGI("PropertiesChanged signal received from: {}", object_path);
+    const gchar* iface = nullptr;
+    GVariant* changedProps = nullptr;
+    GVariant* invalidatedProps = nullptr;
+    g_variant_get(parameters, "(&s@a{sv}@as)", &iface, &changedProps, &invalidatedProps);
+    if (!changedProps) return;
+
+    GVariantIter iter;
+    gchar* key;
+    GVariant* value;
+    g_variant_iter_init(&iter, changedProps);
+    gsize len = 0;
+    while (g_variant_iter_next(&iter, "{sv}", &key, &value)) {
+        LOGI("Loop: {}", key);
+        if (std::string(key) == "Value") {
+            const guint8* data = (const guint8*)g_variant_get_fixed_array(value, &len, sizeof(guint8));
+            LOGI("data length: {}", static_cast<int>(len));
+
+            self->processData(object_path, data, len);
+            if (len == 0) {
+                LOGW("data length Zero, returning");
+                continue;
+            }
+            // for (uint8_t i = 0; i < len; ++i) {
+            //     LOGI("data[{}]: {} ", i, static_cast<int>(data[i]));
+            // }
+            if (data[0] == 231) { //check if start byte is correct
+                uint16_t obtained_value;
+                memcpy(&obtained_value,&data[1],2);
+                self->onHeartRateReceived(static_cast<float>(obtained_value));
+            }
+        }
+        g_free(key);
+        g_variant_unref(value);
+    }
+    g_variant_unref(changedProps);
+    if (invalidatedProps) g_variant_unref(invalidatedProps);
+}
+
+void BleService::processData(const std::string& path, const guint8* data, gsize len) {
+  //  std::lock_guard<std::mutex> lk(m_mx);
+    if (path.empty() || !data || len == 0) {
+        LOGE("Invalid data received for path: {}", path);
+        return;
+    }
+
+    //LOGI("Processing data for path: {}", path);
+    // Process the data based on the characteristic type
+    // if (path.find("heart_rate") != std::string::npos) {
+    //     parseHeartRate(const_cast<guint8*>(data), len);
+    // } else {
+    //     LOGI("Unknown characteristic type for path: {}", path);
+    // }
+
+    if (firstNotificationReceived.load()) {
+        numOfFloatsReceived.store(static_cast<int>(len/sizeof(float)));
+        firstNotificationReceived.store(false);
+        LOGI("First notification received, number of floats: {}", numOfFloatsReceived.load());
+    }
+    // Increment the number of floats received
+   // numOfFloatsReceived.fetch_add(len / sizeof(float));
+}
+
+
+
+bool BleService::startLoopFor(const std::string& key) {
+
+    // Prepare GLib objects first
+    GMainContext* ctx = g_main_context_new();
+    if (!ctx) return false;
+
+    GMainLoop* loop = g_main_loop_new(ctx, FALSE);
+    //GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
+    if (!loop) {
+        g_main_context_unref(ctx);
+        return false;
+    }
+
+    // Start thread now so we know it’s good before inserting
+    std::thread th;
+    try {
+        LOGI("starting loop for key: {}", key );
+        th = std::thread([ctx,loop,key, this]() { 
+            g_main_context_push_thread_default(ctx);
+
+            GError* error = nullptr;
+            gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
+            if (!gDBusConn) {
+                LOGE("❌ Failed to connect to system bus: ", error->message);
+                g_error_free(error);
+                return false;
+            }
+
+            GVariant* reply = g_dbus_connection_call_sync(
+                gDBusConn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
+                "GetManagedObjects", nullptr, nullptr,
+                G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error
+            );
+
+            if (!reply) {
+                std::cerr << "❌ GetManagedObjects failed: " << error->message << "\n";
+                g_error_free(error);
+                g_object_unref(gDBusConn);
+                return false;
+            }
+
+            GVariantIter* objIter = nullptr;
+            g_variant_get(reply, "(a{oa{sa{sv}}})", &objIter);
+
+            LOGI("Starting notifications for characteristic: {}", key);
+
+            if (key.empty()) {
+                std::cerr << "Characteristic path is empty.\n";
+                g_object_unref(gDBusConn);
+                return false;
+            }
+
+            g_dbus_connection_call_sync(
+                gDBusConn,
+                "org.bluez", key.c_str(),
+                "org.bluez.GattCharacteristic1", "StartNotify",
+                nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error
+            );
+
+            if (error) {
+                LOGE("StartNotify failed");
+                g_error_free(error);
+                g_object_unref(gDBusConn);
+                return false;
+            }
+            LOGI("Notifications enabled for: {} subscribing to properties changed", key);
+            g_dbus_connection_signal_subscribe(
+                gDBusConn,
+                "org.bluez", "org.freedesktop.DBus.Properties", 
+                "PropertiesChanged",
+                key.c_str(), "org.bluez.GattCharacteristic1",
+                G_DBUS_SIGNAL_FLAGS_NONE,
+                &BleService::onPropertiesChanged,
+                this, nullptr
+            );
+            g_main_loop_run(loop);  
+            g_main_context_pop_thread_default(ctx);
+            LOGI("coming out of thread loop");
+            return true; 
+        });
+    } catch (...) {
+        g_main_context_unref(ctx);
+        return false; // If thread creation fails, clean up and return false
+        //throw;
+    }
+
+    // Try to publish into the map (move the thread in)
+    {
+        std::lock_guard<std::mutex> lk(m_mx);
+        auto [it, inserted] = m_loops.try_emplace(
+            key, LoopWorker{ctx, loop, std::move(th)}
+        );
+        if (!inserted) {
+            // Key already exists → roll back the new worker
+            g_main_loop_quit(loop);
+            // Unlock before joining? No lock held here besides lk; ok to join now.
+            // Wait for loop to stop
+            std::thread tmp(std::move(th)); // th is already moved, but keep pattern consistent
+            if (tmp.joinable()) tmp.join();
+            g_main_loop_unref(loop);
+            g_main_context_unref(ctx);
+            return false;
+        }
+    }
+    LOGI("loop was started for key: {}", key);
+    return true;
+}
+
+void BleService::stopLoopFor(const std::string& key) {
+    LOGI("Stopping loop for key: {}", key);
+    LoopWorker toStop; // take ownership out of the map to stop outside the lock
+    {
+        std::lock_guard<std::mutex> lk(m_mx);
+        auto it = m_loops.find(key);
+        if (it == m_loops.end()) return;
+
+        //GMainContext* ctx = it->second.ctx;
+        // bool ctx_acquired = g_main_context_acquire(it->second.ctx);
+        // if (!ctx_acquired) {
+        //     LOGE("Failed to acquire context for key: {}", key);
+        //     return;
+        // }
+        // g_main_context_release(it->second.ctx);
+        // Signal loop to quit
+        if (it->second.loop) g_main_loop_quit(it->second.loop);
+
+        // Move the worker out so we can join without holding the lock
+        toStop = std::move(it->second);
+        m_loops.erase(it);
+    }
+    LOGI("Loop for key: {} is signaled to stop", key);
+    // Join the thread
+    if (toStop.th.joinable()) toStop.th.join();
+    LOGI("Loop for key: {} has stopped", key);
+    // Free GLib resources
+    destroyWorker(toStop);
+}
+
+void BleService::stopAllLoops() {
+    // Move everything out to join without holding the lock
+    std::unordered_map<std::string, LoopWorker> toStopAll;
+    {
+        std::lock_guard<std::mutex> lk(m_mx);
+        for (auto& [k, w] : m_loops) {
+            if (w.loop) g_main_loop_quit(w.loop);
+        }
+        toStopAll = std::move(m_loops);
+        m_loops.clear();
+    }
+
+    // Join and free
+    for (auto& [k, w] : toStopAll) {
+        if (w.th.joinable()) w.th.join();
+        destroyWorker(w);
     }
 }
-double BleService::readService(const std::string& mac, const std::string& uuid) {
+
+bool BleService::hasLoop(const std::string& key) const {
+    std::lock_guard<std::mutex> lk(m_mx);
+    return m_loops.find(key) != m_loops.end();
+}
+
+size_t BleService::loopCount() const {
+    std::lock_guard<std::mutex> lk(m_mx);
+    return m_loops.size();
+}
+
+
+
+
+    
+
+std::string BleService::readService(const std::string& mac, const std::string& uuid) {
     LOGI( "✅ Read notify for  {}-{}",mac,uuid);
-    // Here you would implement the actual read operation
-    // For now, just return true to indicate success
-    return 3.14;
+    // TODO: implement the actual read operation
+    return macToDevicePath(mac) + "/" + uuid; // Return the path as a string
 }
 
 
@@ -540,10 +873,12 @@ std::string BleService::macToDevicePath(const std::string& mac) {
 bool BleService::removeDevice(const std::string& mac) {
     auto path = macToDevicePath(mac);
     GError* error = nullptr;
-    g_dbus_connection_call_sync(conn, "org.bluez", "/org/bluez/hci0", "org.bluez.Adapter1",
-                                 "RemoveDevice",
-                                 g_variant_new("(o)", path.c_str()),
-                                 nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
+    g_dbus_connection_call_sync(gDBusConn, "org.bluez", 
+                                "/org/bluez/hci0", 
+                                "org.bluez.Adapter1",
+                                "RemoveDevice",
+                                g_variant_new("(o)", path.c_str()),
+                                nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
     if (error) {
         std::cerr << "⚠️ RemoveDevice failed: " << error->message << std::endl;
         g_error_free(error);
@@ -555,7 +890,7 @@ bool BleService::removeDevice(const std::string& mac) {
 bool BleService::isConnected(const std::string& mac) {
     auto path = macToDevicePath(mac);
     GError* error = nullptr;
-    GVariant* result = g_dbus_connection_call_sync(conn, "org.bluez", path.c_str(),
+    GVariant* result = g_dbus_connection_call_sync(gDBusConn, "org.bluez", path.c_str(),
         "org.freedesktop.DBus.Properties", "Get",
         g_variant_new("(ss)", "org.bluez.Device1", "Connected"),
         G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
@@ -576,7 +911,7 @@ bool BleService::isConnected(const std::string& mac) {
 bool BleService::isPaired(const std::string& mac) {
     auto path = macToDevicePath(mac);
     GError* error = nullptr;
-    GVariant* result = g_dbus_connection_call_sync(conn, "org.bluez", path.c_str(),
+    GVariant* result = g_dbus_connection_call_sync(gDBusConn, "org.bluez", path.c_str(),
         "org.freedesktop.DBus.Properties", "Get",
         g_variant_new("(ss)", "org.bluez.Device1", "Paired"),
         G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
@@ -597,7 +932,7 @@ bool BleService::isPaired(const std::string& mac) {
 bool BleService::pairDevice(const std::string& mac) {
     auto path = macToDevicePath(mac);
     GError* error = nullptr;
-    g_dbus_connection_call_sync(conn, "org.bluez", path.c_str(), "org.bluez.Device1",
+    g_dbus_connection_call_sync(gDBusConn, "org.bluez", path.c_str(), "org.bluez.Device1",
         "Pair", nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
     if (error) {
         LOGE("Pair failed: {} ",error->message);
@@ -611,7 +946,7 @@ bool BleService::pairDevice(const std::string& mac) {
 bool BleService::trustDevice(const std::string& mac) {
     auto path = macToDevicePath(mac);
     GError* error = nullptr;
-    g_dbus_connection_call_sync(conn, "org.bluez", path.c_str(), "org.freedesktop.DBus.Properties",
+    g_dbus_connection_call_sync(gDBusConn, "org.bluez", path.c_str(), "org.freedesktop.DBus.Properties",
         "Set", g_variant_new("(ssv)", "org.bluez.Device1", "Trusted",
         g_variant_new_boolean(true)), nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
 
@@ -626,7 +961,7 @@ bool BleService::trustDevice(const std::string& mac) {
 std::vector<std::string> BleService::getConnectedDevices() {
     std::vector<std::string> devices;
     GError* error = nullptr;
-    GVariant* reply = g_dbus_connection_call_sync(conn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
+    GVariant* reply = g_dbus_connection_call_sync(gDBusConn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager",
         "GetManagedObjects", nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
 
     if (!reply) {
@@ -669,184 +1004,11 @@ std::vector<std::string> BleService::getConnectedDevices() {
     return devices;
 }
 
-void BleService::parseHeartRate(uint8_t* data, gsize len) {
-    
-    if (len < 2) return;
-
-    uint8_t flags = data[0];
-    uint16_t hr;
-    if (flags & 0x01) {
-        hr = data[1] | (data[2] << 8);
-    } else {
-        hr = data[1];
-    }
-
-    LOGI("Heart Rate: {} bpm", hr);
-}
-
-void BleService::onPropertiesChanged(GDBusConnection*,
-                                     const gchar*,
-                                     const gchar*,
-                                     const gchar*,
-                                     const gchar*,
-                                     GVariant* parameters,
-                                     gpointer user_data)
-{
-    auto* self = static_cast<BleService*>(user_data);
-    if (!self) return;
-
-    LOGI("PropertiesChanged signal received");
-
-    const gchar* iface = nullptr;
-    GVariant* changedProps = nullptr;
-    GVariant* invalidatedProps = nullptr;
-    g_variant_get(parameters, "(&s@a{sv}@as)", &iface, &changedProps, &invalidatedProps);
-    if (!changedProps) return;
-
-    GVariantIter iter;
-    gchar* key;
-    GVariant* value;
-    g_variant_iter_init(&iter, changedProps);
-
-    while (g_variant_iter_next(&iter, "{sv}", &key, &value)) {
-        LOGI("Loop: {}", key);
-        if (std::string(key) == "Value") {
-            gsize len = 0;
-            const guint8* data = (const guint8*)g_variant_get_fixed_array(value, &len, sizeof(guint8));
-            LOGI("data length: {}", static_cast<int>(len));
-            if (len == 0) {
-                LOGW("data length Zero, returning");
-                continue;
-            }
-            for (uint8_t i = 0; i < len; ++i) {
-                LOGI("data[{}]: {} ", i, static_cast<int>(data[i]));
-            }
-            if (data[0] == 231) { //check if start byte is correct
-                uint16_t obtained_value;
-                memcpy(&obtained_value,&data[1],2);
-                self->onHeartRateReceived(static_cast<float>(obtained_value));
-            }
-        }
-        g_free(key);
-        g_variant_unref(value);
-    }
-
-    g_variant_unref(changedProps);
-    if (invalidatedProps) g_variant_unref(invalidatedProps);
-}
-
-
-// //Updated enableHeartRateNotifications
-// bool BleService::enableHeartRateNotifications(const std::string& path) {
-//     if (path.empty()) {
-//         std::cerr << "Characteristic path is empty.\n";
-//         return false;
-//     }
-
-//     GError* error = nullptr;
-//     GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
-//     if (!conn) {
-//         std::cerr << "Failed to connect to system bus: " << error->message << "\n";
-//         g_error_free(error);
-//         return false;
-//     }
-
-//     std::cout << "Starting notifications on: " << path << "\n";
-
-//     g_dbus_connection_call_sync(
-//         conn,
-//         "org.bluez",
-//         path.c_str(),
-//         "org.bluez.GattCharacteristic1",
-//         "StartNotify",
-//         nullptr, nullptr,
-//         G_DBUS_CALL_FLAGS_NONE,
-//         -1, nullptr, &error
-//     );
-
-//     if (error) {
-//         std::cerr << "❌ StartNotify failed: " << error->message << "\n";
-//         g_error_free(error);
-//         g_object_unref(conn);
-//         return false;
-//     }
-
-//     g_dbus_connection_signal_subscribe(
-//         conn,
-//         "org.bluez",
-//         "org.freedesktop.DBus.Properties",
-//         "PropertiesChanged",
-//         path.c_str(),
-//         "org.bluez.GattCharacteristic1",
-//         G_DBUS_SIGNAL_FLAGS_NONE,
-//         &BleService::onPropertiesChanged,
-//         this, nullptr
-//     );
-
-//     m_loop = g_main_loop_new(nullptr, FALSE);
-//     m_loopThread = std::thread([this] {
-//         g_main_loop_run(m_loop);
-//     });
-
-//     g_object_unref(conn);
-//     return true;
-
-// //     //TODO: May be needed to disconnect
-// //     //g_variant_unref(reply);
-// //     //g_object_unref(conn);
-// //     return true;
-// }
-
-//disableHeartRateNotifications
-bool BleService::disableNotification(const std::string& path) {
-    if (path.empty()) {
-        std::cerr << "❌ Characteristic path is empty.\n";
-        return false;
-    }
-
-    GError* error = nullptr;
-    GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
-    if (!conn) {
-        LOGE("Failed to connect to system bus: {} ", error->message);
-        g_error_free(error);
-        return false;
-    }
-
-    g_dbus_connection_call_sync(
-        conn,
-        "org.bluez",
-        path.c_str(),
-        "org.bluez.GattCharacteristic1",
-        "StopNotify",
-        nullptr, nullptr,
-        G_DBUS_CALL_FLAGS_NONE,
-        -1, nullptr, &error
-    );
-
-    if (error) {
-        std::cerr << "❌ StopNotify failed: " << error->message << "\n";
-        g_error_free(error);
-        g_object_unref(conn);
-        return false;
-    }
-
-    if (m_loop) {
-        g_main_loop_quit(m_loop);
-        if (m_loopThread.joinable()) {
-            m_loopThread.join();
-        }
-        g_main_loop_unref(m_loop);
-        m_loop = nullptr;
-    }
-
-    g_object_unref(conn);
-    return true;
-}
 
 bool BleService::cancelPairing(const std::string& mac) {
     auto path = macToDevicePath(mac);
     GError* error = nullptr;
-    g_dbus_connection_call_sync(conn, "org.bluez", path.c_str(), "org.bluez.Device1",
+    g_dbus_connection_call_sync(gDBusConn, "org.bluez", path.c_str(), "org.bluez.Device1",
         "CancelPairing", nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
     if (error) {
         LOGE("CancelPairing failed: {}", error->message);
@@ -864,11 +1026,11 @@ bool BleService::disconnectDevice(const std::string& jsonmac) {
     for (auto& ch : path) if (ch == ':') ch = '_';
 
     GError* error = nullptr;
-    GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
-    if (!conn) return false;
+    gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
+    if (!gDBusConn) return false;
 
     g_dbus_connection_call_sync(
-        conn, "org.bluez",
+        gDBusConn, "org.bluez",
         path.c_str(),
         "org.bluez.Device1",
         "Disconnect",
@@ -880,11 +1042,11 @@ bool BleService::disconnectDevice(const std::string& jsonmac) {
     if (error) {
         std::cerr << "❌ Disconnect failed: " << error->message << "\n";
         g_error_free(error);
-        g_object_unref(conn);
+        g_object_unref(gDBusConn);
         return false;
     }
 
-    g_object_unref(conn);
+    g_object_unref(gDBusConn);
     return true;
 }
 
@@ -897,6 +1059,34 @@ bool BleService::cleanupDisconnectedDevices() {
     // Extend with timestamp check and call removeDevice(...) if needed
 }
 
+bool BleService::shutdown() {
+    //Turning off the Bluetooth adapter
+    GError* error = nullptr;
+    gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
+    if (!gDBusConn) {
+        LOGE("❌ Failed to connect to system bus: {}", error->message);
+        g_error_free(error);
+        return false;
+    }
+    g_dbus_connection_call_sync(
+        gDBusConn, "org.bluez", adapterPath.c_str(), "org.bluez.Adapter1",
+        "SetPowered", g_variant_new("(b)", FALSE), nullptr,
+        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error
+    );
+    if (error) {
+        LOGE("❌ Failed to turn off Bluetooth adapter: {}", error->message);
+        g_error_free(error);
+        g_object_unref(gDBusConn);
+        return false;
+    }
+    LOGI("Bluetooth adapter turned off successfully.");
+    g_object_unref(gDBusConn);
+    gDBusConn = nullptr;
+    LOGI("BLE Service stopped and cleaned up.");
+    return true;
+}
+
+
 
 // BleService::BleService() {
 //     GError* error = nullptr;
@@ -907,7 +1097,74 @@ bool BleService::cleanupDisconnectedDevices() {
 //     }
 // }
 
-//TODO: may be later to destroy the class
-// BleService::~BleService() {
-//     if (conn) g_object_unref(conn);
-// }
+
+//----------------WebSocket related methods-------------------
+
+void BleService::addGraphSocket(v_int32 graphId, 
+    const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket,
+    const std::shared_ptr<WSComm>& wsComm) {
+    std::lock_guard<std::mutex> lock(m_graphMutex);
+    m_graphClients[graphId] = socket;
+
+    m_graphById[graphId] = wsComm;
+
+    if (!m_graphRunning) {
+        m_graphRunning = true;
+        m_graphThread = std::thread([this]() { 
+            LOGI("Starting graph streaming thread.");
+            streamGraph(); 
+            LOGI("Graph streaming thread finished.");
+        });
+    }
+}
+
+void BleService::leaveGraph(v_int32 userId) {
+    {
+        std::lock_guard<std::mutex> lock(m_graphMutex);
+        m_graphClients.erase(userId);
+        m_graphById.erase(userId);
+        if (m_graphClients.empty()) {
+            m_graphRunning = false;
+            m_cv.notify_all(); //  wake the thread immediately
+        
+        }
+    }
+
+    if (m_graphThread.joinable()) {
+        m_graphThread.join();
+    }
+}
+
+void BleService::streamGraph() {
+    using namespace std::chrono;
+    std::unique_lock<std::mutex> lock(m_graphMutex);
+    float value = 0.0f;
+    //auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
+    while (m_graphRunning) {
+        auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+        float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
+
+        std::string json =
+            "{ \"timestamp\": " + std::to_string(now) +
+            ", \"value\": " + std::to_string(value) +
+            " }";
+        LOGI("streamGraph() - Sending message: {}", json);
+        for(auto& pair : m_graphById) {
+            LOGI("sendMessage() - Sending message to userId={}", pair.first);
+            pair.second->sendMessage(json.c_str());
+        }
+        LOGI("streamGraph() - Sent message: {}", json);
+        //std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        m_cv.wait_for(lock, std::chrono::milliseconds(300), [this] {
+            return !m_graphRunning;
+        });
+    }
+    LOGI("streamGraph() - Stopping graph streaming thread.");
+    m_graphRunning = false;
+    //m_cv.notify_all(); // Notify any waiting threads to wake up
+}
+
+bool BleService::isEmpty() const {
+    std::lock_guard<std::mutex> lockGraphs(m_graphMutex);
+    return m_graphClients.empty();
+}

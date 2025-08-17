@@ -11,15 +11,18 @@
 #include <unordered_map>
 #include <gio/gio.h>
 #include <vector>
+#include <condition_variable>
+
 #include "service/IService.hpp"
+#include "websocket/GraphWebSocket.hpp"
+#include "websocket/WSComm.hpp"
 
-
-struct BleDescriptorInfo {
-    std::string name; // e.g., "Client Characteristic Configuration"
-    std::string path; // e.g., "/org/bluez/hci0/dev_A0_DD_6C_AF_73_9E/service0001/char0002/desc0003"
-    std::string uuid;
-    std::vector<std::string> properties; 
-};
+// struct BleDescriptorInfo {
+//     std::string name; // e.g., "Client Characteristic Configuration"
+//     std::string path; // e.g., "/org/bluez/hci0/dev_A0_DD_6C_AF_73_9E/service0001/char0002/desc0003"
+//     std::string uuid;
+//     std::vector<std::string> properties; 
+// };
 
 struct BleCharacteristicInfo {
     std::string name; // e.g., "Heart Rate Measurement"
@@ -44,11 +47,14 @@ struct BleDeviceInfo {
 };
 
 
-
 class BleService : public IService {
 public:
     BleService() = default;
     
+    ~BleService() override{
+        stop();
+        stopAllLoops();
+    }
     bool start() override;
     void stop() override;
     bool isRunning() const override;
@@ -64,8 +70,8 @@ public:
     bool disconnectDevice(const std::string& jsonmac);
     std::vector<BleServiceInfo> getServicesAndCharacteristics(const std::string& mac);
 
-    bool toggleNotify(const std::string& body);
-    double readService(const std::string& mac, const std::string& uuid);
+    std::string toggleNotify(const std::string& body);
+    std::string readService(const std::string& mac, const std::string& uuid);
     bool writeService(const std::string& body);
     // bool enableServices(const std::string& mac, const std::vector<std::string>& serviceUUIDs);
     bool enableServices(const std::string& mac);
@@ -80,11 +86,38 @@ public:
     std::vector<std::string> getConnectedDevices();
     bool cleanupDisconnectedDevices();
 
+    // Graph WebSocket related members
+    void addGraphSocket(v_int32 userId, 
+        const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket,
+        const std::shared_ptr<WSComm>& graphWebSocket);
+        
+    void leaveGraph(v_int32 userId);
+    void streamGraph();
+    bool isEmpty() const;
+    bool shutdown();
+
+
 private:
+    
+    //Global Variables for BLE service
+    GDBusConnection* gDBusConn;
+    std::atomic<bool> firstNotificationReceived{false};
+    std::atomic<int> numOfFloatsReceived{0};
+    uint8_t numOfActiveNotifications = 0;
+    std::unordered_map<std::string,int> numOfGraphsPerChar;
+    void processData(const std::string& path, const guint8* data, gsize len);
+
+
+    void createGraphWebSocket();
     bool enableNotification(const std::string& path);
     bool disableNotification(const std::string& path);
+    // void saveThreadsCharacteristics( 
+    //                 std::string characteristicPath,
+    //                 GMainLoop* m_loop,
+    //                 std::thread m_loopThread);
+    //std::unordered_map<std::string,std::pair<GMainLoop*,std::thread>> mapThreadsCharacteristics;
     std::string macToDevicePath(const std::string& mac);
-    GDBusConnection* conn;
+
 
     bool initBluez();
     void parseHeartRate(uint8_t* data, gsize len);
@@ -99,6 +132,7 @@ private:
 
     bool running = false;
     std::vector<BleDeviceInfo> currentConnectedDevices;
+    std::vector<BleServiceInfo> currentServices;
     std::string macAddress;
     std::string lastCommandResponse;
     std::atomic<float> latestValue {0.0f};
@@ -106,9 +140,46 @@ private:
     std::string adapterPath;
     std::string findAdapter();
 
-    GMainLoop* m_loop = nullptr;
-    std::thread m_loopThread;
+    // Later for multiple connections in parallel
+    // it will be usefull for the app
+    struct LoopWorker {
+        GMainContext* ctx = nullptr; // created with g_main_context_new(); unref when done
+        GMainLoop*    loop = nullptr; // created with g_main_loop_new(ctx, FALSE); unref when done
+        std::thread   th;             // runs g_main_loop_run(loop)
+    };
 
+    // IMPORTANT: one GMainContext per thread for multiple loops in parallel
+    // (the default context should not be run from multiple threads simultaneously).
+    std::unordered_map<std::string, LoopWorker> m_loops;
+    mutable std::mutex m_mx;
+
+    static void destroyWorker(LoopWorker& w) {
+        // Called after thread is already joined or never started.
+        if (w.loop)  { g_main_loop_unref(w.loop);   w.loop = nullptr; }
+        if (w.ctx)   { g_main_context_unref(w.ctx); w.ctx  = nullptr; }
+    }
+
+    // Start a dedicated GMainLoop on its own thread for a given key.
+    // Returns false if a loop for this key already exists or creation fails.
+    bool startLoopFor(const std::string& key);
+    // Stop + join + free the loop for this key, if present.
+    void stopLoopFor(const std::string& key);
+    // Stop everything (used in dtor / shutdown).
+    void stopAllLoops();
+    //helpers
+    bool hasLoop(const std::string& key) const;
+    size_t loopCount() const;
+
+
+    
+    // For Graph WebSocket
+    std::unordered_map<v_int32, std::shared_ptr<oatpp::websocket::AsyncWebSocket>> m_graphClients;
+    std::unordered_map<v_int32, std::shared_ptr<WSComm>> m_graphById;
+
+    std::thread m_graphThread;
+    std::atomic<bool> m_graphRunning = false;
+    mutable std::mutex m_graphMutex;
+    std::condition_variable m_cv;
 
     // Add more UUIDs and names as needed
     std::unordered_map<std::string, std::string> uuidToName = {
