@@ -146,34 +146,10 @@ void GraphWebSocket::onAfterCreate_NonBlocking(
 void GraphWebSocket::onBeforeDestroy_NonBlocking(
     const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) {
     auto listener = socket->getListener();
+    LOGI("GraphWebSocket::onBeforeDestroy_NonBlocking - Listener: {}", listener ? "exists" : "null");
+      
+    auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
+    bleService->leaveGraph(getGraphId());
 
-    // // Check if it's a chat peer
-    // if (auto peer = std::dynamic_pointer_cast<Peer>(listener)) {
-    //     auto room = peer->getRoom();
-    //     auto nickname = peer->getNickname();
-    //     room->removePeerByUserId(peer->getUserId());
-    //     m_nicknameToUserId.erase(nickname);
-
-    //     if (room->isEmpty()) {
-    //         std::lock_guard<std::mutex> lock(m_roomsMutex);
-    //         m_rooms.erase(room->getName()); // or use roomName directly
-    //         // OATPP_LOGi("Lobby", "peer: Deleted room {} because it's empty", peer->getNickname()->c_str());
-    //     }
-    // }
-    // // Check if it's a graph peer
-    // else if (auto graphPeer = std::dynamic_pointer_cast<GraphListener>(listener)) {
-
-    //     auto nickname = graphPeer->getNickname();
-    //     auto room = graphPeer->getRoom();
-    //     auto userId = graphPeer->getUserId();
-    //     room->leaveGraph(userId);
-    //     m_nicknameToUserId.erase(nickname);
-
-    //     if (room->isEmpty()) {
-    //         std::lock_guard<std::mutex> lock(m_roomsMutex);
-    //         m_rooms.erase(room->getName()); // or use roomName directly
-    //         // OATPP_LOGi("Lobby", " graph: Deleted room {} because it's empty", graphPeer->getNickname()->c_str());
-    //     }
-    // }
     socket->setListener(nullptr);
 }

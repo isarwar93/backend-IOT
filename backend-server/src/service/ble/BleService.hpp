@@ -106,16 +106,14 @@ private:
     uint8_t numOfActiveNotifications = 0;
     std::unordered_map<std::string,int> numOfGraphsPerChar;
     void processData(const std::string& path, const guint8* data, gsize len);
+    
+    std::unordered_map<std::string, float> m_graphData;
+    std::atomic<bool> m_graphValueChanged{false};
 
-
-    void createGraphWebSocket();
+    
     bool enableNotification(const std::string& path);
     bool disableNotification(const std::string& path);
-    // void saveThreadsCharacteristics( 
-    //                 std::string characteristicPath,
-    //                 GMainLoop* m_loop,
-    //                 std::thread m_loopThread);
-    //std::unordered_map<std::string,std::pair<GMainLoop*,std::thread>> mapThreadsCharacteristics;
+    
     std::string macToDevicePath(const std::string& mac);
 
 

@@ -636,22 +636,26 @@ void BleService::processData(const std::string& path, const guint8* data, gsize 
         LOGE("Invalid data received for path: {}", path);
         return;
     }
-
-    //LOGI("Processing data for path: {}", path);
-    // Process the data based on the characteristic type
-    // if (path.find("heart_rate") != std::string::npos) {
-    //     parseHeartRate(const_cast<guint8*>(data), len);
-    // } else {
-    //     LOGI("Unknown characteristic type for path: {}", path);
-    // }
-
     if (firstNotificationReceived.load()) {
         numOfFloatsReceived.store(static_cast<int>(len/sizeof(float)));
         firstNotificationReceived.store(false);
         LOGI("First notification received, number of floats: {}", numOfFloatsReceived.load());
     }
-    // Increment the number of floats received
-   // numOfFloatsReceived.fetch_add(len / sizeof(float));
+    // Wait untill the websocket has processed the previous data
+    // Websocket should be really fast, so this should not block for long
+    // needs better design
+    while(m_graphValueChanged.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    for (int i = 0; i < static_cast<int>(len/sizeof(float)); ++i) {
+        //load the data into the graphData map
+        std::string key = "0." + std::to_string(i);
+        // Convert bytes to float
+        float value = 0.0f;
+        memcpy(&value, &data[i * sizeof(float)], sizeof(float));
+        m_graphData[key] = static_cast<float>(value);
+    }
+    m_graphValueChanged.store(true);
 }
 
 
@@ -823,10 +827,6 @@ size_t BleService::loopCount() const {
     return m_loops.size();
 }
 
-
-
-
-    
 
 std::string BleService::readService(const std::string& mac, const std::string& uuid) {
     LOGI( "✅ Read notify for  {}-{}",mac,uuid);
@@ -1144,24 +1144,32 @@ void BleService::streamGraph() {
         auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
         float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
 
-        std::string json =
-            "{ \"timestamp\": " + std::to_string(now) +
-            ", \"value\": " + std::to_string(value) +
-            " }";
-        LOGI("streamGraph() - Sending message: {}", json);
+        while(!m_graphValueChanged.load()) {
+            m_cv.wait_for(lock, std::chrono::milliseconds(1));
+        }
+
+        auto newJson = nlohmann::json::object();
+        
         for(auto& pair : m_graphById) {
             LOGI("sendMessage() - Sending message to userId={}", pair.first);
-            pair.second->sendMessage(json.c_str());
+            for(auto& graphData : m_graphData) {   
+                newJson["time"] = std::to_string(now);
+                newJson["id"] = graphData.first; //we want to send the first key
+                newJson["value"] = graphData.second;
+                pair.second->sendMessage(newJson.dump().c_str());//   json.c_str());
+                // LOGI("streamGraph() - Sent message: {}", newJson.dump());
+            }
         }
-        LOGI("streamGraph() - Sent message: {}", json);
-        //std::this_thread::sleep_for(std::chrono::milliseconds(400));
-        m_cv.wait_for(lock, std::chrono::milliseconds(300), [this] {
+        m_graphValueChanged.store(false);
+     
+
+
+        m_cv.wait_for(lock, std::chrono::milliseconds(1), [this] {
             return !m_graphRunning;
         });
     }
     LOGI("streamGraph() - Stopping graph streaming thread.");
     m_graphRunning = false;
-    //m_cv.notify_all(); // Notify any waiting threads to wake up
 }
 
 bool BleService::isEmpty() const {
