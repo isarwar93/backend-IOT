@@ -89,6 +89,7 @@ public:
     ENDPOINT_ASYNC("GET", "/api/ble/services/{mac}", getServices) {
         ENDPOINT_ASYNC_INIT(getServices)
         Action act() override {
+            LOGI("GET /api/ble/services/{} endpoint", request->getPathVariable("mac"));
             auto mac = request->getPathVariable("mac");
             OATPP_ASSERT_HTTP(mac , Status::CODE_400, "mac should not be null");
             
@@ -98,6 +99,10 @@ public:
                 return _return(resp);
             }
             auto services = bleService->getServicesAndCharacteristics(mac);
+            LOGI("Found {} services and characteristics for device {}", services.size(), mac);
+            if (services.empty()) {
+                LOGE("No services found for device {}", mac);
+            }
             oatpp::List<oatpp::Object<ServiceDto>> result = oatpp::List<oatpp::Object<ServiceDto>>::createShared();
             for (const auto& s : services) {
                 auto sDto = ServiceDto::createShared();

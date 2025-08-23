@@ -40,15 +40,10 @@ oatpp::async::CoroutineStarter WSComm::readMessage(const std::shared_ptr<AsyncWe
     return nullptr; // do nothing
 }
 
-// std::shared_ptr<Room> WSComm::getRoom() {
-//     return m_room;
-// }
-
 oatpp::String WSComm::getNickname() {
     return m_nickname;
 }
 
 v_int32 WSComm::getUserId() {
-    // OATPP_LOGi("Graph listener", "getUserId: {}",m_userId);
     return m_userId;
 }

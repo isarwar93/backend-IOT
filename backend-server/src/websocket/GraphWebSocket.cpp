@@ -131,25 +131,16 @@ void GraphWebSocket::onAfterCreate_NonBlocking(
     // auto room = getOrCreateRoom(globGraphName);
 
     bleService->addGraphSocket(getGraphId(), socket, graph);
-    //bleService->sendMessage(mac + "graph joined " + uuid);
-    // } 
-    // else {
-    //     auto room = getOrCreateRoom(roomName);
-    //     auto peer = std::make_shared<Peer>(socket, room, nickname, obtainNewUserId());
-    //     socket->setListener(peer);
-      
-    //     room->addPeer(peer);
-    //     room->sendMessage(nickname + " joined " + roomName);
-    // }
 }
 
 void GraphWebSocket::onBeforeDestroy_NonBlocking(
     const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket) {
     auto listener = socket->getListener();
     LOGI("GraphWebSocket::onBeforeDestroy_NonBlocking - Listener: {}", listener ? "exists" : "null");
-      
+    
+    if (!listener) return;
+
     auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
     bleService->leaveGraph(getGraphId());
-
     socket->setListener(nullptr);
 }

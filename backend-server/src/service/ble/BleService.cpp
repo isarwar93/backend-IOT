@@ -278,10 +278,15 @@ bool BleService::connectToDevice(const std::string& jsonmac) {
 
     currentConnectedDevices.emplace_back();
     g_object_unref(gDBusConn);
+    // sleep for a while to ensure the device is connected
+    //std::this_thread::sleep_for(std::chrono::milliseconds(500));
     return true;
 }
 
+
+// FIXME: at first time connect, it will return empty vector (randomly)
 std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics(const std::string& mac) {
+
     // As services and characteristics will be required after the connection
     // established, therefore, mac address can be taken from global private variable
     // const std::string& mac = macAddress;
@@ -298,7 +303,10 @@ std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics(const std:
         "GetManagedObjects", nullptr, nullptr, G_DBUS_CALL_FLAGS_NONE, -1,
         nullptr, &error);
 
-    if (!reply) return services;
+    if (!reply) {
+        LOGE("❌ GetManagedObjects failed: {}", error->message);
+        return services;
+    }
 
     GVariantIter* iter;
     g_variant_get(reply, "(a{oa{sa{sv}}})", &iter);
@@ -387,6 +395,7 @@ std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics(const std:
     for (auto& [_, svc] : serviceMap) {
         services.push_back(std::move(svc));
     }
+
     return services;
 }
 
@@ -400,17 +409,6 @@ bool BleService::enableNotification(const std::string& path) {
 
     numOfActiveNotifications++;
     LOGI("Active notifications count: {}", numOfActiveNotifications);
-    // // GMainLoop* m_loop = nullptr;
-    // std::thread m_loopThread;
-    // GMainLoop* m_loop = g_main_loop_new(nullptr, FALSE);
-    // m_loopThread = std::thread([this] {
-    //     g_main_loop_run(m_loop);
-    // });
-    // LOGI("Saving loop and thread for characteristic: {}", path);
-    // saveThreadsCharacteristics(path, m_loop, std::move(m_loopThread));
-    //TODO: May be needed to disconnect
-    //g_variant_unref(reply);
-    //g_object_unref(conn);
     return true;
 }
 
@@ -437,53 +435,6 @@ bool BleService::disableNotification(const std::string& path) {
     LOGI("Active notifications count: {}", numOfActiveNotifications);
 
     return true; 
-    //TODO: check if the notification was successfully disabled
-    // auto item = mapThreadsCharacteristics.find(path);
-    // if (item == mapThreadsCharacteristics.end()) {
-    //     LOGE("❌ No loop found for characteristic: {}", path);
-    //     return false;
-    // }
-    // GMainLoop* m_loop = item->second.first; // Get the GMainLoop
-    // std::thread m_loopThread = std::move(item->second.second); // Get the thread
-
-    // // Unsubscribe from the signal
-    // GError* error = nullptr;
-    // GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
-    // if (!conn) {
-    //     LOGE("Failed to connect to system bus: {} ", error->message);
-    //     g_error_free(error);
-    //     return false;
-    // }
-
-    // g_dbus_connection_call_sync(
-    //     conn,
-    //     "org.bluez",
-    //     path.c_str(),
-    //     "org.bluez.GattCharacteristic1",
-    //     "StopNotify",
-    //     nullptr, nullptr,
-    //     G_DBUS_CALL_FLAGS_NONE,
-    //     -1, nullptr, &error
-    // );
-
-    // if (error) {
-    //     std::cerr << "❌ StopNotify failed: " << error->message << "\n";
-    //     g_error_free(error);
-    //     g_object_unref(conn);
-    //     return false;
-    // }
-
-    // if (m_loop) {
-    //     g_main_loop_quit(m_loop);
-    //     if (m_loopThread.joinable()) {
-    //         m_loopThread.join();
-    //     }
-    //     g_main_loop_unref(m_loop);
-    //     m_loop = nullptr;
-    // }
-
-    // g_object_unref(conn);
-    // return true;
 }
 
 void BleService::handleHeartRateData(const guint8* data, gsize len) {
@@ -589,7 +540,6 @@ void BleService::onPropertiesChanged(GDBusConnection*,
 {
     auto* self = static_cast<BleService*>(user_data);
     if (!self) return;
-    //std::lock_guard<std::mutex> lk(self->m_mx);
 
     LOGI("PropertiesChanged signal received from: {}", object_path);
     const gchar* iface = nullptr;
@@ -604,7 +554,6 @@ void BleService::onPropertiesChanged(GDBusConnection*,
     g_variant_iter_init(&iter, changedProps);
     gsize len = 0;
     while (g_variant_iter_next(&iter, "{sv}", &key, &value)) {
-        LOGI("Loop: {}", key);
         if (std::string(key) == "Value") {
             const guint8* data = (const guint8*)g_variant_get_fixed_array(value, &len, sizeof(guint8));
             LOGI("data length: {}", static_cast<int>(len));
@@ -614,9 +563,6 @@ void BleService::onPropertiesChanged(GDBusConnection*,
                 LOGW("data length Zero, returning");
                 continue;
             }
-            // for (uint8_t i = 0; i < len; ++i) {
-            //     LOGI("data[{}]: {} ", i, static_cast<int>(data[i]));
-            // }
             if (data[0] == 231) { //check if start byte is correct
                 uint16_t obtained_value;
                 memcpy(&obtained_value,&data[1],2);
@@ -641,11 +587,18 @@ void BleService::processData(const std::string& path, const guint8* data, gsize 
         firstNotificationReceived.store(false);
         LOGI("First notification received, number of floats: {}", numOfFloatsReceived.load());
     }
-    // Wait untill the websocket has processed the previous data
-    // Websocket should be really fast, so this should not block for long
-    // needs better design
-    while(m_graphValueChanged.load()) {
+    //if websocket is not connected, just return
+    if (m_graphRunning.load() == false) {
+        return;
+    }
+    //Add a timeout to avoid infinite loop
+    static int timeout = 300; // 3 seconds max wait
+    while(m_graphValueChanged.load() && timeout > 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        timeout--;
+    }
+    if (timeout <= 0) {
+        LOGW("Timeout waiting for graph data to be processed, overwriting data");
     }
     for (int i = 0; i < static_cast<int>(len/sizeof(float)); ++i) {
         //load the data into the graphData map
@@ -1099,13 +1052,11 @@ bool BleService::shutdown() {
 
 
 //----------------WebSocket related methods-------------------
-
 void BleService::addGraphSocket(v_int32 graphId, 
     const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket,
     const std::shared_ptr<WSComm>& wsComm) {
     std::lock_guard<std::mutex> lock(m_graphMutex);
     m_graphClients[graphId] = socket;
-
     m_graphById[graphId] = wsComm;
 
     if (!m_graphRunning) {
@@ -1123,10 +1074,11 @@ void BleService::leaveGraph(v_int32 userId) {
         std::lock_guard<std::mutex> lock(m_graphMutex);
         m_graphClients.erase(userId);
         m_graphById.erase(userId);
+        LOGI("Graph Weboscket leaving");
         if (m_graphClients.empty()) {
+            LOGI("m graph running is stopping and notifying");
             m_graphRunning = false;
             m_cv.notify_all(); //  wake the thread immediately
-        
         }
     }
 
@@ -1144,8 +1096,12 @@ void BleService::streamGraph() {
         auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
         float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
 
-        while(!m_graphValueChanged.load()) {
-            m_cv.wait_for(lock, std::chrono::milliseconds(1));
+        while(!m_graphValueChanged.load() && m_graphRunning) {
+            m_cv.wait_for(lock, std::chrono::milliseconds(1), 
+                [this]{
+                    return !m_graphRunning;
+                }       
+            );
         }
 
         auto newJson = nlohmann::json::object();
@@ -1161,9 +1117,7 @@ void BleService::streamGraph() {
             }
         }
         m_graphValueChanged.store(false);
-     
-
-
+    
         m_cv.wait_for(lock, std::chrono::milliseconds(1), [this] {
             return !m_graphRunning;
         });
