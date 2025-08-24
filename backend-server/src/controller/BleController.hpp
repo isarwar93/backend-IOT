@@ -181,11 +181,12 @@ public:
         info->pathParams.add<String>("mac").description = "MAC address of the device"; // adding param1 info
         info->pathParams.add<String>("uuid").description = "UUID of the service"; // adding param2 info
     }
-    ENDPOINT_ASYNC("GET", "/api/ble/read/mac=${mac}/uuid=${uuid}", getRead) {
+    ENDPOINT_ASYNC("GET", "/api/ble/read/mac=${mac}/uuid=${uuid}/path=${path}", getRead) {
         ENDPOINT_ASYNC_INIT(getRead)
         Action act() override {
             auto mac = request->getPathVariable("mac");
             auto uuid = request->getPathVariable("uuid");
+            auto path = request->getPathVariable("uuid");
             OATPP_ASSERT_HTTP(mac , Status::CODE_400, "mac should not be null");
             OATPP_ASSERT_HTTP(uuid , Status::CODE_400, "uuid should not be null");
             
@@ -536,19 +537,7 @@ public:
 
 
     
-    // ENDPOINT_ASYNC("GET", "/api/ble/read/mac=${mac}/uuid=${uuid}", getRead) {
-    //     ENDPOINT_ASYNC_INIT(getRead)
-    //     Action act() override {
-           
-    //     }
-    // };
-  
-    // ENDPOINT_INFO(WSBLEGraph) {
-    //     info->summary = "Getting a quick read value through async get restAPI.";
-    //     info->addResponse<String>(Status::CODE_200, "text/plain");
-    //     info->pathParams.add<String>("mac").description = "MAC address of the device"; // adding param1 info
-    //     info->pathParams.add<String>("uuid").description = "UUID of the service"; // adding param2 info
-    // }
+    // Websocket api
     ENDPOINT_ASYNC("GET", "ws/ble/graph/mac=${mac}/uuid=${uuid}", WSBLEGraph) {
         ENDPOINT_ASYNC_INIT(WSBLEGraph)
 
@@ -557,7 +546,6 @@ public:
             auto uuid = request->getPathVariable("uuid");
             OATPP_ASSERT_HTTP(mac , Status::CODE_400, "mac should not be null");
             OATPP_ASSERT_HTTP(uuid , Status::CODE_400, "uuid should not be null");
-            // resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
 
             auto response = oatpp::websocket::Handshaker::serversideHandshake(
                 request->getHeaders(), controller->graphWebSocketConnHandler);

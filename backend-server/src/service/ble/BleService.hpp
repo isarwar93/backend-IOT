@@ -71,6 +71,7 @@ public:
     std::vector<BleServiceInfo> getServicesAndCharacteristics(const std::string& mac);
 
     std::string toggleNotify(const std::string& body);
+    size_t readCharacteristics(const std::string& charPath, guint8* retData);
     std::string readService(const std::string& mac, const std::string& uuid);
     bool writeService(const std::string& body);
     // bool enableServices(const std::string& mac, const std::vector<std::string>& serviceUUIDs);
@@ -103,7 +104,7 @@ private:
     GDBusConnection* gDBusConn;
     std::atomic<bool> firstNotificationReceived{false};
     std::atomic<int> numOfFloatsReceived{0};
-    uint8_t numOfActiveNotifications = 0;
+    int8_t numOfActiveNotifications = 0;
     std::unordered_map<std::string,int> numOfGraphsPerChar;
     void processData(const std::string& path, const guint8* data, gsize len);
     

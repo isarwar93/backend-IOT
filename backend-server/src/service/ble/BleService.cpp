@@ -279,7 +279,8 @@ bool BleService::connectToDevice(const std::string& jsonmac) {
     currentConnectedDevices.emplace_back();
     g_object_unref(gDBusConn);
     // sleep for a while to ensure the device is connected
-    //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+
     return true;
 }
 
@@ -475,32 +476,41 @@ std::string BleService::toggleNotify(const std::string& body){
         LOGI("Enabling notification");
         //TODO:number of values
         //return enableNotification(path);
-
-        firstNotificationReceived.store(true);
+        uint8_t retData[10]; //FIXME
+        //size_t readLength = readCharacteristics(path, retData);
+        
+        size_t readLength = 1;
+        retData[0]= 5;
+        LOGI("Read length {} from char {}",readLength, path);
+        // firstNotificationReceived.store(true);
         int ret = enableNotification(path);
         if (!ret) {
-            firstNotificationReceived.store(false);
+            // firstNotificationReceived.store(false);
             LOGE("Failed to enable notification for path: {}", path);
             newJson["status"] = "failed";
             newJson["message"] = "Failed to enable notification.";
             return newJson.dump();
         }
-        int timeoutSeconds = 200;
-        while(firstNotificationReceived.load() && timeoutSeconds > 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            timeoutSeconds--;
-        }
-        if (timeoutSeconds <= 0) {
-            LOGE("Timeout waiting for first notification on path: {}", path);
-            newJson["status"] = "failed";
-            newJson["message"] = "Timeout waiting for first notification.";
-            return newJson.dump();
-        }
+
+        // int timeoutSeconds = 200;
+        // while(firstNotificationReceived.load() && timeoutSeconds > 0) {
+        //     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        //     timeoutSeconds--;
+        // }
+        // if (timeoutSeconds <= 0) {
+        //     LOGE("Timeout waiting for first notification on path: {}", path);
+        //     newJson["status"] = "failed";
+        //     newJson["message"] = "Timeout waiting for first notification.";
+        //     return newJson.dump();
+        // }
         //LOGI("numOfFloatsReceived: {}", numOfFloatsReceived.load());
-        numOfGraphsPerChar[path] = numOfFloatsReceived.load(); 
-        LOGI("First notification received, number of active notifications: {}", numOfActiveNotifications);
-        newJson["number_of_values"] = numOfFloatsReceived.load();
-        numOfFloatsReceived.store(0); // Reset for next use
+        if (readLength == 0){
+            LOGE("Could not read length of custom characteristic");
+        }
+        numOfGraphsPerChar[path] = retData[0]; 
+        LOGI("Read length received, number of active notifications: {}", numOfActiveNotifications);
+        newJson["number_of_values"] = retData[0];
+        // numOfFloatsReceived.store(0); // Reset for next use
 
     } else {
         LOGI("Disabling notification");
@@ -582,11 +592,11 @@ void BleService::processData(const std::string& path, const guint8* data, gsize 
         LOGE("Invalid data received for path: {}", path);
         return;
     }
-    if (firstNotificationReceived.load()) {
-        numOfFloatsReceived.store(static_cast<int>(len/sizeof(float)));
-        firstNotificationReceived.store(false);
-        LOGI("First notification received, number of floats: {}", numOfFloatsReceived.load());
-    }
+    // if (firstNotificationReceived.load()) {
+    //     numOfFloatsReceived.store(static_cast<int>(len/sizeof(float)));
+    //     firstNotificationReceived.store(false);
+    //     LOGI("First notification received, number of floats: {}", numOfFloatsReceived.load());
+    // }
     //if websocket is not connected, just return
     if (m_graphRunning.load() == false) {
         return;
@@ -600,12 +610,12 @@ void BleService::processData(const std::string& path, const guint8* data, gsize 
     if (timeout <= 0) {
         LOGW("Timeout waiting for graph data to be processed, overwriting data");
     }
-    for (int i = 0; i < static_cast<int>(len/sizeof(float)); ++i) {
+    for (int i = 1; i < static_cast<int>(len/sizeof(float))+1; ++i) {
         //load the data into the graphData map
         std::string key = "0." + std::to_string(i);
         // Convert bytes to float
         float value = 0.0f;
-        memcpy(&value, &data[i * sizeof(float)], sizeof(float));
+        memcpy(&value, &data[(i-1)*(sizeof(float))], sizeof(float));
         m_graphData[key] = static_cast<float>(value);
     }
     m_graphValueChanged.store(true);
@@ -779,10 +789,59 @@ size_t BleService::loopCount() const {
     std::lock_guard<std::mutex> lk(m_mx);
     return m_loops.size();
 }
+size_t BleService::readCharacteristics(const std::string& charPath, guint8* retData) {
+    GError* err = nullptr;
+    gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &err);
+    if (!gDBusConn) {
+        std::cerr << "DBus connection is null (initialize it once with g_bus_get_sync and keep it alive).\n";
+        return {};
+    }
+    static const char* BLUEZ_BUS       = "org.bluez";
+    static const char* GATT_CHAR_IFACE = "org.bluez.GattCharacteristic1";
+
+    GVariantBuilder *builder = g_variant_builder_new(G_VARIANT_TYPE("a{sv}"));
+    /* Finish building variant, i.e. the variant does not contain any value. */
+    GVariant *v1 = g_variant_builder_end(builder);
+    //This has a ReadValue and a WriteValue interface.
+    GVariant* ret = g_dbus_connection_call_sync(
+        gDBusConn,
+        BLUEZ_BUS,
+        charPath.c_str(),
+        GATT_CHAR_IFACE,
+        "ReadValue",
+        g_variant_new_tuple(&v1, 1),  // Empty variant.
+        G_VARIANT_TYPE("(ay)"),               // expect ay directly
+        G_DBUS_CALL_FLAGS_NONE,
+        5000,
+        nullptr,
+        &err
+    );
+    // ret has type "(ay)"
+    GVariant* arr = nullptr;
+    g_variant_get(ret, "(@ay)", &arr);  // borrow child as a new GVariant you must unref
+
+    gsize len = 0;
+    const guint8* data = static_cast<const guint8*>(
+        g_variant_get_fixed_array(arr, &len, sizeof(guint8))
+    );
+
+    if (len > 0) {
+        for (int i = 0; i< len;i++){
+            printf("%d,",data[i]);
+        }
+    }
+
+    g_object_unref(gDBusConn);
+    g_variant_unref(arr);
+    g_variant_unref(ret);
+    return len;
+}
 
 
 std::string BleService::readService(const std::string& mac, const std::string& uuid) {
     LOGI( "✅ Read notify for  {}-{}",mac,uuid);
+
+  
     // TODO: implement the actual read operation
     return macToDevicePath(mac) + "/" + uuid; // Return the path as a string
 }
@@ -1113,7 +1172,7 @@ void BleService::streamGraph() {
                 newJson["id"] = graphData.first; //we want to send the first key
                 newJson["value"] = graphData.second;
                 pair.second->sendMessage(newJson.dump().c_str());//   json.c_str());
-                // LOGI("streamGraph() - Sent message: {}", newJson.dump());
+                LOGI("streamGraph() - Sent message: {}", newJson.dump());
             }
         }
         m_graphValueChanged.store(false);
