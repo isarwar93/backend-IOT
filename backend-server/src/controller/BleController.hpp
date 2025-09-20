@@ -538,21 +538,21 @@ public:
 
     
     // Websocket api
-    ENDPOINT_ASYNC("GET", "ws/ble/graph/mac=${mac}/uuid=${uuid}", WSBLEGraph) {
+    ENDPOINT_ASYNC("GET", "ws/ble/graph/mac=${mac}", WSBLEGraph) {
         ENDPOINT_ASYNC_INIT(WSBLEGraph)
 
         Action act() override {
             auto mac = request->getPathVariable("mac");
-            auto uuid = request->getPathVariable("uuid");
+            // auto uuid = request->getPathVariable("uuid");
             OATPP_ASSERT_HTTP(mac , Status::CODE_400, "mac should not be null");
-            OATPP_ASSERT_HTTP(uuid , Status::CODE_400, "uuid should not be null");
+            // OATPP_ASSERT_HTTP(uuid , Status::CODE_400, "uuid should not be null");
 
             auto response = oatpp::websocket::Handshaker::serversideHandshake(
                 request->getHeaders(), controller->graphWebSocketConnHandler);
 
             auto parameters = std::make_shared<oatpp::network::ConnectionHandler::ParameterMap>();
             (*parameters)["mac"] = mac;
-            (*parameters)["uuid"] = uuid;
+            // (*parameters)["uuid"] = uuid;
             response->setConnectionUpgradeParameters(parameters);
             return _return(response);
         }

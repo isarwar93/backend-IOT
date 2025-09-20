@@ -67,11 +67,11 @@ void Room::streamGraph() {
     auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
     while (m_graphRunning) {
         auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-        //float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
+        float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
         // float value = USE_SRVC("ble")->getLatestMeasurement();
         
         if (bleService) {
-            value = bleService->getLatestMeasurement();
+            // value = bleService->getLatestMeasurement();
         }
 
         std::string json =

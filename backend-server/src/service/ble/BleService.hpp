@@ -17,12 +17,8 @@
 #include "websocket/GraphWebSocket.hpp"
 #include "websocket/WSComm.hpp"
 
-// struct BleDescriptorInfo {
-//     std::string name; // e.g., "Client Characteristic Configuration"
-//     std::string path; // e.g., "/org/bluez/hci0/dev_A0_DD_6C_AF_73_9E/service0001/char0002/desc0003"
-//     std::string uuid;
-//     std::vector<std::string> properties; 
-// };
+#include "BleFrameBuilder.hpp"
+#include "CharRegistry.hpp"
 
 struct BleCharacteristicInfo {
     std::string name; // e.g., "Heart Rate Measurement"
@@ -46,6 +42,11 @@ struct BleDeviceInfo {
     int rssi;
 };
 
+struct CurrentGraphValue {
+    float value;
+    bool updated;
+};
+
 
 class BleService : public IService {
 public:
@@ -62,8 +63,6 @@ public:
     std::string sendCommand(const std::string& command) override;
     std::string getStatusJson() const override;
 
-    float getLatestMeasurement() const;
-    void onHeartRateReceived(float hr); 
 
     std::vector<BleDeviceInfo> scanDevices(int timeoutSeconds);
     bool connectToDevice(const std::string& mac);
@@ -74,7 +73,6 @@ public:
     size_t readCharacteristics(const std::string& charPath, guint8* retData);
     std::string readService(const std::string& mac, const std::string& uuid);
     bool writeService(const std::string& body);
-    // bool enableServices(const std::string& mac, const std::vector<std::string>& serviceUUIDs);
     bool enableServices(const std::string& mac);
     void printScanResults(const std::vector<BleDeviceInfo>& devices);
 
@@ -97,26 +95,24 @@ public:
     bool isEmpty() const;
     bool shutdown();
 
-
 private:
     
     //Global Variables for BLE service
     GDBusConnection* gDBusConn;
+
+    // enabled notification and data process related methods
+    BleFrameBuilder frameBuilder_;
     std::atomic<bool> firstNotificationReceived{false};
     std::atomic<int> numOfFloatsReceived{0};
     int8_t numOfActiveNotifications = 0;
-    std::unordered_map<std::string,int> numOfGraphsPerChar;
+    std::string extractUuidPrefix(const std::string& uuid);
     void processData(const std::string& path, const guint8* data, gsize len);
-    
-    std::unordered_map<std::string, float> m_graphData;
-    std::atomic<bool> m_graphValueChanged{false};
-
+    CharRegistry charReg;
     
     bool enableNotification(const std::string& path);
     bool disableNotification(const std::string& path);
     
     std::string macToDevicePath(const std::string& mac);
-
 
     bool initBluez();
     void parseHeartRate(uint8_t* data, gsize len);
@@ -132,6 +128,7 @@ private:
     bool running = false;
     std::vector<BleDeviceInfo> currentConnectedDevices;
     std::vector<BleServiceInfo> currentServices;
+    std::unordered_map<std::string,int> currentEnabledNotifications;
     std::string macAddress;
     std::string lastCommandResponse;
     std::atomic<float> latestValue {0.0f};
@@ -170,11 +167,13 @@ private:
     size_t loopCount() const;
 
 
-    
     // For Graph WebSocket
     std::unordered_map<v_int32, std::shared_ptr<oatpp::websocket::AsyncWebSocket>> m_graphClients;
     std::unordered_map<v_int32, std::shared_ptr<WSComm>> m_graphById;
 
+
+    std::unordered_map<std::string, CurrentGraphValue> m_graphData;
+    std::atomic<bool> m_graphValueChanged{false};
     std::thread m_graphThread;
     std::atomic<bool> m_graphRunning = false;
     mutable std::mutex m_graphMutex;
@@ -200,6 +199,9 @@ private:
         {"0000180d-0000-1000-8000-00805f9b34fb", "Service Heart Rate"},
         {"00002a37-0000-1000-8000-00805f9b34fb", "Characteristic Heart Rate Measurement"},
         {"00002a38-0000-1000-8000-00805f9b34fb", "Characteristic Body Sensor Location"},
+        {"00001822-0000-1000-8000-00805f9b34fb", "Service Pulse Oximeter"},
+        {"00002a5f-0000-1000-8000-00805f9b34fb", "Characteristic Pulse Oximeter Measurments"},
+        {"00002a60-0000-1000-8000-00805f9b34fb", "Characteristic Pulse Oximeter Features"},
     };
 };
 

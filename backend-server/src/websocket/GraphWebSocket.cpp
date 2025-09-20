@@ -81,18 +81,18 @@ void GraphWebSocket::onAfterCreate_NonBlocking(
     }
     auto mac = it->second;
 
-    it = params->find("uuid");
-    if (it != params->end()) {
-        //PASS
-    } else {
-        LOGI("uuid not found in params");
-        return;
-    }
+    // it = params->find("uuid");
+    // if (it != params->end()) {
+    //     //PASS
+    // } else {
+    //     LOGI("uuid not found in params");
+    //     return;
+    // }
 
-    auto uuid = it->second;
+    // auto uuid = it->second;
 
     LOGI(" MAC: {}",mac);
-    LOGI(" uuid: {}",uuid);  
+    // LOGI(" uuid: {}",uuid);  
 
 
     // // assign unique id to each nick

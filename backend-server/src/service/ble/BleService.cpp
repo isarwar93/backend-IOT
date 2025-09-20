@@ -92,7 +92,7 @@ void BleService::stop() {
         g_object_unref(gDBusConn);
         gDBusConn = nullptr;
     }
-    numOfGraphsPerChar.clear();
+    //TODO: other clearing
     running = false;
 }
 
@@ -128,16 +128,6 @@ std::string BleService::getStatusJson() const {
         {"latestValue", latestValue.load()}
     }).dump();
 }
-
-float BleService::getLatestMeasurement() const {
-    // std::cout << "getting/loading heart rate value: " <<latestValue.load()<< "\n";
-    return latestValue.load();
-}
-
-void BleService::onHeartRateReceived(float hr) {
-    latestValue.store(hr);
-}
-
 
 std::vector<BleDeviceInfo> BleService::scanDevices(int timeoutSeconds) {
     std::vector<BleDeviceInfo> devices;
@@ -226,7 +216,6 @@ std::vector<BleDeviceInfo> BleService::scanDevices(int timeoutSeconds) {
     return devices;
 }
 
-
 std::string parseMacFlexible(const std::string& input) {
     try {
         // Try to parse as JSON
@@ -278,19 +267,15 @@ bool BleService::connectToDevice(const std::string& jsonmac) {
 
     currentConnectedDevices.emplace_back();
     g_object_unref(gDBusConn);
-    // sleep for a while to ensure the device is connected
-
 
     return true;
 }
 
-
-// FIXME: at first time connect, it will return empty vector (randomly)
+/* ------------------------------
+Notifications related methods
+------------------------------*/
 std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics(const std::string& mac) {
 
-    // As services and characteristics will be required after the connection
-    // established, therefore, mac address can be taken from global private variable
-    // const std::string& mac = macAddress;
     std::vector<BleServiceInfo> services;
     std::string basePath = "/org/bluez/hci0/dev_" + mac;
     for (auto& ch : basePath) if (ch == ':') ch = '_';
@@ -438,29 +423,21 @@ bool BleService::disableNotification(const std::string& path) {
     return true; 
 }
 
-void BleService::handleHeartRateData(const guint8* data, gsize len) {
-    std::cout << "📦 Data (" << len << " bytes): ";
-    for (gsize i = 0; i < len; ++i) {
-        std::cout << static_cast<int>(data[i]) << " ";
-    }
-    std::cout << std::endl;
 
-    uint8_t flags = data[0];
-    bool is16bit = flags & 0x01;
-    uint16_t heartRate = is16bit && len >= 3
-        ? (data[1] | (data[2] << 8))
-        : data[1];
+std::string BleService::extractUuidPrefix(const std::string& uuid) {
+    // Take substring before first dash
+    auto dashPos = uuid.find('-');
+    std::string firstPart = uuid.substr(0, dashPos);
 
-    std::cout << "❤️  Heart Rate: " << heartRate << " bpm\n";
-    onHeartRateReceived(static_cast<float>(heartRate));
+    // Strip leading zeros
+    auto nonZero = firstPart.find_first_not_of('0');
+    return (nonZero == std::string::npos) ? "0" : firstPart.substr(nonZero);
 }
 
 //return number of floating point values
 std::string BleService::toggleNotify(const std::string& body){
     LOGI("Toggling notify for  {}",body);
-    // json::json json_data = json::parse(body);
     auto json_data = nlohmann::json::parse(body);
-
     auto newJson = nlohmann::json::object();
 
     if (!json_data.contains("mac") || !json_data.contains("uuid")) {
@@ -471,18 +448,34 @@ std::string BleService::toggleNotify(const std::string& body){
     }
   
     std::string path = json_data["path"];
+    std::string uuid = json_data["uuid"];
+    std::string name = json_data["charName"];
+    std::string extractedUuid = extractUuidPrefix(uuid);
     bool enable = json_data["enable"];
     if (enable) {
         LOGI("Enabling notification");
-        //TODO:number of values
-        //return enableNotification(path);
-        uint8_t retData[10]; //FIXME
-        //size_t readLength = readCharacteristics(path, retData);
+
+        // Here we want to inform front end, about number of values available
+        uint8_t retData[10]; 
+        size_t readLength = 0;
+        //Custom characteristic (can be any amount)
+        LOGI("Extracted UUID: {}",extractedUuid);
+        if (extractedUuid == "f00d"){
+            readLength = readCharacteristics(path, retData);
+        }
+        // Always one adc heart rate value
+        else if (extractedUuid == "2a37"){
+            readLength = 1;
+            //TODO: needs better idea
+            retData[0] = 1;
+        }
+        // pulse oximeter, always two, pulse and spo2
+        else if (extractedUuid == "2a5f"){
+            readLength = 1;
+            retData[0] = 2;
+        }
         
-        size_t readLength = 1;
-        retData[0]= 5;
         LOGI("Read length {} from char {}",readLength, path);
-        // firstNotificationReceived.store(true);
         int ret = enableNotification(path);
         if (!ret) {
             // firstNotificationReceived.store(false);
@@ -492,53 +485,26 @@ std::string BleService::toggleNotify(const std::string& body){
             return newJson.dump();
         }
 
-        // int timeoutSeconds = 200;
-        // while(firstNotificationReceived.load() && timeoutSeconds > 0) {
-        //     std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        //     timeoutSeconds--;
-        // }
-        // if (timeoutSeconds <= 0) {
-        //     LOGE("Timeout waiting for first notification on path: {}", path);
-        //     newJson["status"] = "failed";
-        //     newJson["message"] = "Timeout waiting for first notification.";
-        //     return newJson.dump();
-        // }
-        //LOGI("numOfFloatsReceived: {}", numOfFloatsReceived.load());
         if (readLength == 0){
             LOGE("Could not read length of custom characteristic");
         }
-        numOfGraphsPerChar[path] = retData[0]; 
+        charReg.upsert(path, extractedUuid, name, retData[0]);
+        std::vector<std::string> temp = charReg.listNames();
+        LOGI("first:{}",temp[0]);
         LOGI("Read length received, number of active notifications: {}", numOfActiveNotifications);
         newJson["number_of_values"] = retData[0];
-        // numOfFloatsReceived.store(0); // Reset for next use
 
     } else {
         LOGI("Disabling notification");
-        //return disableNotification(path);
         disableNotification(path);
+        charReg.eraseByPath(path);
     }
     LOGI("Returning response for toggle notify");
     newJson["status"] = "success";
     newJson["message"] = enable ? "Notification enabled" : "Notification disabled";
-   //TODO: newJson["number_of_values"] = ;
     return newJson.dump();
 }
 
-
-void BleService::parseHeartRate(uint8_t* data, gsize len) {
-    
-    if (len < 2) return;
-
-    uint8_t flags = data[0];
-    uint16_t hr;
-    if (flags & 0x01) {
-        hr = data[1] | (data[2] << 8);
-    } else {
-        hr = data[1];
-    }
-
-    LOGI("Heart Rate: {} bpm", hr);
-}
 
 void BleService::onPropertiesChanged(GDBusConnection*,
                                      const gchar* sender_name,
@@ -551,7 +517,7 @@ void BleService::onPropertiesChanged(GDBusConnection*,
     auto* self = static_cast<BleService*>(user_data);
     if (!self) return;
 
-    LOGI("PropertiesChanged signal received from: {}", object_path);
+    // LOGI("PropertiesChanged signal received from: {}", object_path);
     const gchar* iface = nullptr;
     GVariant* changedProps = nullptr;
     GVariant* invalidatedProps = nullptr;
@@ -573,11 +539,6 @@ void BleService::onPropertiesChanged(GDBusConnection*,
                 LOGW("data length Zero, returning");
                 continue;
             }
-            if (data[0] == 231) { //check if start byte is correct
-                uint16_t obtained_value;
-                memcpy(&obtained_value,&data[1],2);
-                self->onHeartRateReceived(static_cast<float>(obtained_value));
-            }
         }
         g_free(key);
         g_variant_unref(value);
@@ -586,17 +547,17 @@ void BleService::onPropertiesChanged(GDBusConnection*,
     if (invalidatedProps) g_variant_unref(invalidatedProps);
 }
 
+
+/* -------------------------
+Data process related methods
+ -------------------------*/
+
 void BleService::processData(const std::string& path, const guint8* data, gsize len) {
   //  std::lock_guard<std::mutex> lk(m_mx);
     if (path.empty() || !data || len == 0) {
         LOGE("Invalid data received for path: {}", path);
         return;
     }
-    // if (firstNotificationReceived.load()) {
-    //     numOfFloatsReceived.store(static_cast<int>(len/sizeof(float)));
-    //     firstNotificationReceived.store(false);
-    //     LOGI("First notification received, number of floats: {}", numOfFloatsReceived.load());
-    // }
     //if websocket is not connected, just return
     if (m_graphRunning.load() == false) {
         return;
@@ -610,19 +571,46 @@ void BleService::processData(const std::string& path, const guint8* data, gsize 
     if (timeout <= 0) {
         LOGW("Timeout waiting for graph data to be processed, overwriting data");
     }
-    for (int i = 1; i < static_cast<int>(len/sizeof(float))+1; ++i) {
-        //load the data into the graphData map
-        std::string key = "0." + std::to_string(i);
-        // Convert bytes to float
-        float value = 0.0f;
-        memcpy(&value, &data[(i-1)*(sizeof(float))], sizeof(float));
-        m_graphData[key] = static_cast<float>(value);
+
+    std::string key;
+    std::vector<float> convertedData;  
+    auto all = charReg.listAll();
+    for (const auto& meta : all) {
+        LOGI("Registered path:  {}",meta.uuid);
     }
-    m_graphValueChanged.store(true);
+
+    if (auto metaOpt = charReg.getByPath(path)) {
+        const auto& meta = *metaOpt;
+
+        if (meta.uuid == "f00d"){
+            convertedData = frameBuilder_.makeCustom5(data,len);
+        }
+        // Always one adc heart rate value
+        else if (meta.uuid == "2a37"){
+            convertedData = frameBuilder_.makeHeart(data, len);
+        }
+        // pulse oximeter, always two, pulse and spo2
+        else if (meta.uuid == "2a5f"){
+            convertedData = frameBuilder_.makePoX(data, len);
+        }
+        for (int i = 1; i < convertedData.size()+1; ++i) {
+            key = meta.name +"."+ std::to_string(i);
+            CurrentGraphValue convertedDataPoint;
+            convertedDataPoint.value = convertedData[i-1];
+            convertedDataPoint.updated = true;
+            m_graphData[key] = convertedDataPoint;
+            LOGI("key: {}",key);
+            LOGI("convertedData[i]: {}",convertedData[i-1]);
+        }
+        m_graphValueChanged.store(true);
+    } else {
+        LOGE("Path not found");
+    }
 }
 
-
-
+/* -----------------------------------------
+Related to threads starting of notifications
+ ------------------------------------------*/
 bool BleService::startLoopFor(const std::string& key) {
 
     // Prepare GLib objects first
@@ -630,7 +618,6 @@ bool BleService::startLoopFor(const std::string& key) {
     if (!ctx) return false;
 
     GMainLoop* loop = g_main_loop_new(ctx, FALSE);
-    //GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
     if (!loop) {
         g_main_context_unref(ctx);
         return false;
@@ -706,7 +693,6 @@ bool BleService::startLoopFor(const std::string& key) {
     } catch (...) {
         g_main_context_unref(ctx);
         return false; // If thread creation fails, clean up and return false
-        //throw;
     }
 
     // Try to publish into the map (move the thread in)
@@ -789,6 +775,9 @@ size_t BleService::loopCount() const {
     std::lock_guard<std::mutex> lk(m_mx);
     return m_loops.size();
 }
+
+
+//----------------------------------
 size_t BleService::readCharacteristics(const std::string& charPath, guint8* retData) {
     GError* err = nullptr;
     gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &err);
@@ -826,6 +815,7 @@ size_t BleService::readCharacteristics(const std::string& charPath, guint8* retD
     );
 
     if (len > 0) {
+        memcpy(retData,data,len);
         for (int i = 0; i< len;i++){
             printf("%d,",data[i]);
         }
@@ -1167,12 +1157,21 @@ void BleService::streamGraph() {
         
         for(auto& pair : m_graphById) {
             LOGI("sendMessage() - Sending message to userId={}", pair.first);
-            for(auto& graphData : m_graphData) {   
-                newJson["time"] = std::to_string(now);
-                newJson["id"] = graphData.first; //we want to send the first key
-                newJson["value"] = graphData.second;
-                pair.second->sendMessage(newJson.dump().c_str());//   json.c_str());
-                LOGI("streamGraph() - Sent message: {}", newJson.dump());
+            LOGI("charReg.size() - {}", charReg.size());
+            for(int i = 0; i<charReg.size();i++){
+                for(auto& graphData : m_graphData) {
+                    //TODO: make it faster, by removing the non used keys in
+                    //m_graphData
+                    if (!graphData.second.updated) {
+                        continue; // Skip if value hasn't updated
+                    }
+                    newJson["time"] = std::to_string(now);
+                    newJson["id"] = graphData.first; 
+                    newJson["value"] = graphData.second.value;
+                    graphData.second.updated = false; // Reset change flag 
+                    pair.second->sendMessage(newJson.dump().c_str());//   json.c_str());
+                    LOGI("streamGraph() - Sent message: {}", newJson.dump());
+                }
             }
         }
         m_graphValueChanged.store(false);
