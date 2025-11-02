@@ -892,13 +892,18 @@ bool BleService::removeDevice(const std::string& mac) {
 bool BleService::isConnected(const std::string& mac) {
     auto path = macToDevicePath(mac);
     GError* error = nullptr;
+    gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
+    if (!gDBusConn) {
+        LOGW("DBus connection is null.");
+        return false;
+    }
+
     GVariant* result = g_dbus_connection_call_sync(gDBusConn, "org.bluez", path.c_str(),
         "org.freedesktop.DBus.Properties", "Get",
         g_variant_new("(ss)", "org.bluez.Device1", "Connected"),
         G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
-
     if (!result) {
-        std::cerr << "⚠️ Check Connected failed: " << error->message << std::endl;
+        LOGW("DBus call to check connection failed, device might not be available.");
         g_error_free(error);
         return false;
     }
@@ -1023,9 +1028,13 @@ bool BleService::cancelPairing(const std::string& mac) {
 //disconnectDevice
 bool BleService::disconnectDevice(const std::string& jsonmac) {
     LOGI("Disconnecting device with MAC: {}", jsonmac);
+
     std::string mac = parseMacFlexible(jsonmac);
-    std::string path = "/org/bluez/hci0/dev_" + mac;
-    for (auto& ch : path) if (ch == ':') ch = '_';
+    if(!isConnected(mac)){
+        LOGW("Device with MAC: {} is not connected.", mac);
+        return true; // Already disconnected
+    }
+    std::string path = macToDevicePath(mac);
 
     GError* error = nullptr;
     gDBusConn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &error);
@@ -1187,4 +1196,16 @@ void BleService::streamGraph() {
 bool BleService::isEmpty() const {
     std::lock_guard<std::mutex> lockGraphs(m_graphMutex);
     return m_graphClients.empty();
+}
+
+bool BleService::setSimulation(std::string body){
+    auto json_data = nlohmann::json::parse(body);
+    bool simulationStatus = json_data["simulation"];
+    if (simulationStatus){
+        simulationEnable.store(true);
+    }
+    else{
+        simulationEnable.store(false);
+    }
+    return true;
 }

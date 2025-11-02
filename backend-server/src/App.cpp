@@ -2,6 +2,7 @@
 #include "controller/GraphController.hpp"
 #include "controller/RoomsController.hpp"
 #include "controller/BleController.hpp"
+#include "controller/SettingsController.hpp"
 #include "./AppComponent.hpp"
 
 #include "oatpp/network/Server.hpp"
@@ -40,6 +41,9 @@ void run() {
 
      /* Create BleController and add all of its endpoints to router */
     router->addController(std::make_shared<BleController>());
+
+    /* Create SettingsController and add all of its endpoints to router */
+    router->addController(std::make_shared<SettingsController>());
 
     /* Get connection handler component */
     OATPP_COMPONENT(std::shared_ptr<oatpp::network::ConnectionHandler>, connectionHandler, "http");

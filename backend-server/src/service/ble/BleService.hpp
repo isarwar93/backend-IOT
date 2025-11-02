@@ -95,6 +95,8 @@ public:
     bool isEmpty() const;
     bool shutdown();
 
+    bool setSimulation(std::string body);
+
 private:
     
     //Global Variables for BLE service
@@ -178,6 +180,8 @@ private:
     std::atomic<bool> m_graphRunning = false;
     mutable std::mutex m_graphMutex;
     std::condition_variable m_cv;
+
+    std::atomic<bool> simulationEnable{false};
 
     // Add more UUIDs and names as needed
     std::unordered_map<std::string, std::string> uuidToName = {
