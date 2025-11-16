@@ -58,6 +58,39 @@ public:
         }
     };
 
+
+    ENDPOINT_ASYNC("POST", "/api/settings/websocket/fps", bleWsFps) {
+        ENDPOINT_ASYNC_INIT(bleWsFps)
+        Action act() override {
+            return request->readBodyToStringAsync().callbackTo(&bleWsFps::onBodyRead);
+        }
+        Action onBodyRead(const oatpp::String& body) {
+            if (!body) {
+                auto resp = controller->createResponse(Status::CODE_400, "Empty body");
+                return _return(resp);
+            }
+            auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
+            if (!bleService) {
+                auto resp = controller->createResponse(Status::CODE_500, "BLE service not available");
+                return _return(resp);
+            }
+            bool ok = bleService->webSocketMsgSetFps(body);
+            auto resp = controller->createDtoResponse(Status::CODE_200, oatpp::Boolean(ok));
+            resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            return _return(resp);
+        }
+    };
+    //For the browser to understand which headers are needed
+    ENDPOINT_ASYNC("OPTIONS", "/api/settings/websocket/fps", optionsbleWsFps) {
+        ENDPOINT_ASYNC_INIT(optionsbleWsFps)
+        Action act() override {
+            auto resp = controller->createResponse(Status::CODE_200, "");
+            resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+            resp->putHeader("Access-Control-Allow-Headers", "Content-Type");
+            return _return(resp);
+        }
+    };
+
     
 };
 

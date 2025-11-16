@@ -1148,11 +1148,74 @@ void BleService::leaveGraph(v_int32 userId) {
 void BleService::streamGraph() {
     using namespace std::chrono;
     std::unique_lock<std::mutex> lock(m_graphMutex);
-    float value = 0.0f;
+    float value = 23.5f;
+    int counter = 0;
+    int counter2 = 0;
+    int counter3 = 0;
     //auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
     while (m_graphRunning) {
-        auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-        float value = 20 + static_cast<float>(std::rand() % 100) / 10.0f;
+        if (simulationEnable.load()){
+            auto newJson = nlohmann::json::object();
+
+            {
+                nlohmann::json ws;
+                auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+                ws["timestamp"] = std::to_string(now);
+
+                auto makeSensor = [&](float v) {
+                    std::vector<float> past = { v, v * 0.98f, v * 1.02f, v - 0.5f, v + 0.5f };
+                    float sum = 0.f;
+                    float maxv = past.empty() ? 0.f : past[0];
+                    float minv = past.empty() ? 0.f : past[0];
+                    for (float p : past) {
+                        sum += p;
+                        if (p > maxv) maxv = p;
+                        if (p < minv) minv = p;
+                    }
+                    nlohmann::json s;
+                    s["current"] = v;
+                    s["past_values"] = past;
+                    s["max"] = maxv;
+                    s["min"] = minv;
+                    s["avg"] = past.empty() ? 0.f : (sum / static_cast<float>(past.size()));
+                    return s;
+                };
+                counter = (counter + 1) % 1000;
+                counter2 = (counter2 + counter) % 9000;
+                counter3 = (counter3 + counter2) % 80000;
+                nlohmann::json sensors;
+                sensors["ecg"] = makeSensor(counter+value*67+(std::rand()%100)*0.1f);
+                sensors["heart_rate"] = makeSensor(cos((counter+34) * 0.1f) * 10.0f + 70.0f);
+                sensors["respiration_rate"] = makeSensor(sin((counter-2) * 0.1f) * 5.0f + 16.0f);
+                sensors["blood_pressure"] = makeSensor(120.0f + (counter+value - 20.0f) * 0.5f);
+                sensors["body_temperature"] = makeSensor(36.5f + (counter+value - 20.0f) * 0.01f);
+
+                ws["sensors"] = sensors;
+                newJson["websocket_data"] = ws;
+
+                // Broadcast simulated payload to connected graph clients
+                for (auto& pair : m_graphById) {
+                    pair.second->sendMessage(newJson.dump().c_str());
+                }
+            }
+
+            // throttle simulation FPS
+            int fps = m_webSocketMsgFps;
+            if (m_webSocketMsgFps.load() > 0) fps = m_webSocketMsgFps.load();
+            if (fps < 1) fps = 1;
+            if (fps > 100) fps = 100; // sane upper bound
+            auto sleepDuration = std::chrono::milliseconds(1000 / fps);
+            // release the main graph lock while waiting so other threads (add/leave) aren't blocked
+            lock.unlock();
+            // wait for either sleepDuration or until streaming stops (allow early wakeup via notify)
+            std::mutex sleeperMutex;
+            std::unique_lock<std::mutex> sleeperLock(sleeperMutex);
+            m_cv.wait_for(sleeperLock, sleepDuration, [this]{ return !m_graphRunning.load(); });
+            // reacquire the main lock and continue
+            lock.lock();
+
+            continue;
+        }
 
         while(!m_graphValueChanged.load() && m_graphRunning) {
             m_cv.wait_for(lock, std::chrono::milliseconds(1), 
@@ -1174,6 +1237,7 @@ void BleService::streamGraph() {
                     if (!graphData.second.updated) {
                         continue; // Skip if value hasn't updated
                     }
+                    auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
                     newJson["time"] = std::to_string(now);
                     newJson["id"] = graphData.first; 
                     newJson["value"] = graphData.second.value;
@@ -1198,9 +1262,33 @@ bool BleService::isEmpty() const {
     return m_graphClients.empty();
 }
 
+bool BleService::webSocketMsgSetFps(std::string body){
+    auto json_data = nlohmann::json::parse(body);
+    if (!json_data.contains("wsfps")) {
+        LOGE("Invalid request: 'wsfps' key is missing.");
+        return false;
+    }
+    if (!json_data["wsfps"].is_number()) {
+        LOGE("Invalid request: 'simulation' must be a number.");
+        return false;
+    }
+    m_webSocketMsgFps.store(json_data["wsfps"]);
+    LOGI("Setting WebSocket message FPS to {}", m_webSocketMsgFps.load());
+    return true;
+}
+
 bool BleService::setSimulation(std::string body){
     auto json_data = nlohmann::json::parse(body);
+    if (!json_data.contains("simulation")) {
+        LOGE("Invalid request: 'simulation' key is missing.");
+        return false;
+    }
+    if (!json_data["simulation"].is_boolean()) {
+        LOGE("Invalid request: 'simulation' must be a boolean.");
+        return false;
+    }
     bool simulationStatus = json_data["simulation"];
+    LOGI("Setting simulation mode to {}", simulationStatus);
     if (simulationStatus){
         simulationEnable.store(true);
     }

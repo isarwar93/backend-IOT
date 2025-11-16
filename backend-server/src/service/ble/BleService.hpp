@@ -19,6 +19,7 @@
 
 #include "BleFrameBuilder.hpp"
 #include "CharRegistry.hpp"
+#include "BleSimulation.hpp"
 
 struct BleCharacteristicInfo {
     std::string name; // e.g., "Heart Rate Measurement"
@@ -96,9 +97,9 @@ public:
     bool shutdown();
 
     bool setSimulation(std::string body);
-
+    bool webSocketMsgSetFps(std::string body);
 private:
-    
+    BleSimulation bleSimulation;
     //Global Variables for BLE service
     GDBusConnection* gDBusConn;
 
@@ -169,9 +170,11 @@ private:
     size_t loopCount() const;
 
 
-    // For Graph WebSocket
+    // For Graph WebSocket (make new class)
     std::unordered_map<v_int32, std::shared_ptr<oatpp::websocket::AsyncWebSocket>> m_graphClients;
     std::unordered_map<v_int32, std::shared_ptr<WSComm>> m_graphById;
+   
+    std::atomic<int> m_webSocketMsgFps = 20;
 
 
     std::unordered_map<std::string, CurrentGraphValue> m_graphData;
