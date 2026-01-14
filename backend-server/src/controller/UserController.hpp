@@ -6,10 +6,7 @@
 #include "oatpp/network/ConnectionHandler.hpp"
 #include "oatpp/macro/codegen.hpp"
 #include "oatpp/macro/component.hpp"
-
-
 #include "service/AuthService.hpp"
-
 
 
 #include OATPP_CODEGEN_BEGIN(ApiController) //<-- codegen begin
@@ -67,8 +64,20 @@ public:
                 return _return(resp);
             }
         }
-
     };
+
+    // ENDPOINT_ASYNC("GET", "/login", getLogin) {
+    //     ENDPOINT_ASYNC_INIT(getLogin)
+    //     Action act() override {
+    //         OATPP_LOGi("UserController.hpp", "GET login endpoint");
+    //         auto resp = controller->createResponse(Status::CODE_405, "Use POST for login");
+    //         resp->putHeader("Content-Type", "text/plain");
+    //         resp->putHeader("Access-Control-Allow-Origin", "http://localhost:5173");
+    //         // resp->putHeader("Access-Control-Allow-Credentials", "true");
+    //         return _return(resp);
+    //     }
+    // };
+
 };
 
 #include OATPP_CODEGEN_END(ApiController) //<-- codegen end

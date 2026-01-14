@@ -1,10 +1,8 @@
-#ifndef RoomsController_hpp
-#define RoomsController_hpp
+#ifndef ROOMS_CONTROLLER_HPP
+#define ROOMS_CONTROLLER_HPP
 
 #include "oatpp-websocket/Handshaker.hpp"
-
 #include "oatpp/web/server/api/ApiController.hpp"
-
 #include "oatpp/network/ConnectionHandler.hpp"
 
 #include "oatpp/macro/codegen.hpp"
@@ -27,7 +25,6 @@ public:
     : oatpp::web::server::api::ApiController(objectMapper)
     {}
 public:
-  
     ENDPOINT_ASYNC("GET", "/", Root) {    
     ENDPOINT_ASYNC_INIT(Root)
 
@@ -45,25 +42,21 @@ public:
 
         Action act() override {
             OATPP_LOGi("Roomscontroller", "accessing api");
-        return _return(controller->createResponse(Status::CODE_200, pageTemplate));
+            return _return(controller->createResponse(Status::CODE_200, pageTemplate));
         }
-      
     };
 
     ENDPOINT_ASYNC("GET", "ws/chat/{username}/*", WS) {
-
         ENDPOINT_ASYNC_INIT(WS)
-
         Action act() override {
 
             auto username = request->getPathVariable("username");
             auto nickname = request->getQueryParameter("nickname");
-
             OATPP_ASSERT_HTTP(nickname, Status::CODE_400, "No nickname specified.");
 
             /* Websocket handshake */
-            auto response = oatpp::websocket::Handshaker::serversideHandshake(request->getHeaders(), controller->websocketConnectionHandler);
-
+            auto response = oatpp::websocket::Handshaker::serversideHandshake(request->getHeaders(), 
+                            controller->websocketConnectionHandler);
             auto parameters = std::make_shared<oatpp::network::ConnectionHandler::ParameterMap>();
 
             (*parameters)["username"] = username;
@@ -72,13 +65,10 @@ public:
 
             /* Set connection upgrade params */
             response->setConnectionUpgradeParameters(parameters);
-
             return _return(response);
-
         }
     };
 };
 
 #include OATPP_CODEGEN_END(ApiController) //<-- codegen end
-
-#endif /* RoomsController_hpp */
+#endif /* ROOMS_CONTROLLER_HPP */

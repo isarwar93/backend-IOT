@@ -3,28 +3,17 @@
 #define ASYNC_SERVER_ROOMS_LOBBY_HPP
 
 #include "./Room.hpp"
-
 #include "oatpp-websocket/AsyncConnectionHandler.hpp"
 
 #include <unordered_map>
 #include <mutex>
 
 
-
 class Lobby : public oatpp::websocket::AsyncConnectionHandler::SocketInstanceListener {
 
     public:
-
     Lobby():m_userIdCounter(0)
     {}
-
-    // Lobby(std::shared_ptr<BleService> ble) : m_bleService(std::move(ble)),m_userIdCounter(0)
-    //     {}
-
-    // void setBleService(const std::shared_ptr<BleService>& service) {
-    //     m_bleService = service;
-    // }
-
     /**
      * Generate id for new user
      * @return
@@ -37,9 +26,6 @@ class Lobby : public oatpp::websocket::AsyncConnectionHandler::SocketInstanceLis
      * @return
      */
     std::shared_ptr<Room> getOrCreateRoom(const oatpp::String& roomName);
-    void onGraphSocket_NonBlocking(const std::shared_ptr<AsyncWebSocket>& socket,
-                              const std::shared_ptr<const ParameterMap>& params);
-
     /**
      *  Called when socket is created
      */
@@ -54,10 +40,6 @@ class Lobby : public oatpp::websocket::AsyncConnectionHandler::SocketInstanceLis
     std::unordered_map<oatpp::String, std::shared_ptr<Room>> m_rooms;
     std::mutex m_roomsMutex;
     std::unordered_map<oatpp::String, v_int32> m_nicknameToUserId;
-
-
-    // private:
-    // std::shared_ptr<BleService> m_bleService;
 
 };
 

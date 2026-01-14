@@ -4,15 +4,13 @@ set(project_name backend-server)
 
 project(${project_name})
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 # Source files
 include_directories(src)
 file(GLOB_RECURSE SOURCES
   src/*.cpp
   src/*.hpp
- # src/*.c
- # src/*.h
 )
 
 # To have json library
@@ -82,11 +80,14 @@ add_dependencies(${project_name}-exe ${project_name}-lib)
 add_dependencies(${project_name}-test ${project_name}-lib)
 
 set_target_properties(${project_name}-lib ${project_name}-exe ${project_name}-test PROPERTIES
-  CXX_STANDARD 17
+  CXX_STANDARD 20
   CXX_EXTENSIONS OFF
   CXX_STANDARD_REQUIRED ON
   LINKER_LANGUAGE CXX
 )
+add_compile_options(-Wno-psabi -Wall -Wextra -pedantic)
+
+
 
 enable_testing()
 add_test(tests ${project_name}-test)

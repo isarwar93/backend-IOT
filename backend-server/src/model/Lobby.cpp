@@ -36,11 +36,7 @@ void Lobby::onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& soc
     auto nickname = params->find("nickname")->second;
 
     OATPP_LOGi("Lobby", " roomName: {}",roomName);
-    OATPP_LOGi("Lobby", " nickname: {}",nickname);
-
-  
-    // auto roomName = params->find("roomName")->second;
-
+    OATPP_LOGi("Lobby", " nickname: {}",nickname);  
 
     auto type = params->find("type")->second;
     OATPP_LOGi("Lobby", " type: {}",type);
@@ -60,20 +56,14 @@ void Lobby::onAfterCreate_NonBlocking(const std::shared_ptr<AsyncWebSocket>& soc
 
     if (type == "graph") {
         auto room = getOrCreateRoom(roomName);
-
         auto userId = obtainNewUserId();
-
-      
         auto graphy = std::make_shared<GraphListener>(socket, room, nickname, userId);
 
         socket->setListener(graphy);
         room->addGraphSocket(userId, socket,graphy);
         room->sendMessage(nickname + "graph joined " + roomName);
-    
-
     } 
     else {
-
         auto room = getOrCreateRoom(roomName);
       
         auto peer = std::make_shared<Peer>(socket, room, nickname, obtainNewUserId());
