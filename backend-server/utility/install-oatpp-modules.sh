@@ -1,44 +1,56 @@
-#!/bin/sh
+#!/bin/bash
 
-rm -rf tmp
+# OATPP Modules Installation Script
+# This script builds and installs the oatpp and oatpp-websocket libraries
+# from local git submodules in the lib/ directory
 
-mkdir tmp
-cd tmp
+set -e
+
+echo "Building and installing OATPP modules..."
+
+# Get the absolute path to the backend-server directory
+BACKEND_SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 ##########################################################
-## install oatpp
+## Build and install oatpp
 
-MODULE_NAME="oatpp"
+echo "Building oatpp..."
+cd "$BACKEND_SERVER_DIR/lib/oatpp"
 
-git clone --depth=1 https://github.com/oatpp/$MODULE_NAME
+if [ ! -d build ]; then
+    mkdir build
+fi
 
-cd $MODULE_NAME
-mkdir build
 cd build
-
 cmake ..
-make install
+make -j$(nproc)
+echo "Installing oatpp..."
+sudo make install
 
-cd ../../
+cd "$BACKEND_SERVER_DIR"
 
 ##########################################################
-## install oatpp-websocket
+## Build and install oatpp-websocket
 
-MODULE_NAME="oatpp-websocket"
+echo "Building oatpp-websocket..."
+cd "$BACKEND_SERVER_DIR/lib/oatpp-websocket"
 
-git clone --depth=1 https://github.com/oatpp/$MODULE_NAME
+if [ ! -d build ]; then
+    mkdir build
+fi
 
-cd $MODULE_NAME
-mkdir build
 cd build
-
 cmake ..
-make install
+make -j$(nproc)
+echo "Installing oatpp-websocket..."
+sudo make install
 
-cd ../../
+cd "$BACKEND_SERVER_DIR"
 
 ##########################################################
 
-cd ../
-
-rm -rf tmp
+echo "OATPP modules installation completed successfully."
+echo "You can now build the backend server:"
+echo "  cd build"
+echo "  cmake .."
+echo "  make"

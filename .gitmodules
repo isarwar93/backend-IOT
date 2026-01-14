@@ -1,0 +1,8 @@
+[submodule "backend-server/lib/oatpp"]
+	path = backend-server/lib/oatpp
+	url = https://github.com/oatpp/oatpp.git
+	branch = master
+[submodule "backend-server/lib/oatpp-websocket"]
+	path = backend-server/lib/oatpp-websocket
+	url = https://github.com/oatpp/oatpp-websocket.git
+	branch = master
