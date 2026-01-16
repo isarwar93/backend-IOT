@@ -1152,60 +1152,16 @@ void BleService::streamGraph() {
     int counter = 0;
     int counter2 = 0;
     int counter3 = 0;
-    auto lastBpTempSendTime = system_clock::now();
     //auto bleService = std::dynamic_pointer_cast<BleService>(USE_SRVC("ble"));
     while (m_graphRunning) {
         if (simulationEnable.load()){
-            auto newJson = nlohmann::json::object();
+            // Generate simulated sensor data using BleSimulation
+            std::string jsonData = bleSimulation.generateSimulationData(counter, counter2, counter3, value);
+            auto newJson = nlohmann::json::parse(jsonData);
 
-            {
-                nlohmann::json ws;
-                auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-                ws["timestamp"] = std::to_string(now);
-
-                auto makeSensor = [&](float v) {
-                    std::vector<float> past = { v, v * 0.98f, v * 1.02f, v - 0.5f, v + 0.5f };
-                    float sum = 0.f;
-                    float maxv = past.empty() ? 0.f : past[0];
-                    float minv = past.empty() ? 0.f : past[0];
-                    for (float p : past) {
-                        sum += p;
-                        if (p > maxv) maxv = p;
-                        if (p < minv) minv = p;
-                    }
-                    nlohmann::json s;
-                    s["current"] = v;
-                    s["past_values"] = past;
-                    s["max"] = maxv;
-                    s["min"] = minv;
-                    s["avg"] = past.empty() ? 0.f : (sum / static_cast<float>(past.size()));
-                    return s;
-                };
-                counter = (counter + 1) % 1000;
-                counter2 = (counter2 + counter) % 9000;
-                counter3 = (counter3 + counter2) % 80000;
-                nlohmann::json sensors;
-                sensors["ecg"] = makeSensor(counter+value*67+(std::rand()%100)*0.1f);
-                sensors["heart_rate"] = makeSensor(cos((counter+34) * 0.1f) * 10.0f + 70.0f);
-                sensors["respiration_rate"] = makeSensor(sin((counter-2) * 0.1f) * 5.0f + 16.0f);
-                
-                // Check if 3 seconds have passed for blood_pressure and body_temperature
-                auto currentTime = system_clock::now();
-                auto elapsedSeconds = duration_cast<seconds>(currentTime - lastBpTempSendTime).count();
-                
-                if (elapsedSeconds >= 3) {
-                    sensors["blood_pressure"] = makeSensor(120.0f + (counter+value - 20.0f) * 0.5f);
-                    sensors["body_temperature"] = makeSensor(36.5f + (counter+value - 20.0f) * 0.01f);
-                    lastBpTempSendTime = currentTime;
-                }
-
-                ws["sensors"] = sensors;
-                newJson["websocket_data"] = ws;
-
-                // Broadcast simulated payload to connected graph clients
-                for (auto& pair : m_graphById) {
-                    pair.second->sendMessage(newJson.dump().c_str());
-                }
+            // Broadcast simulated payload to connected graph clients
+            for (auto& pair : m_graphById) {
+                pair.second->sendMessage(newJson.dump().c_str());
             }
 
             // throttle simulation FPS
@@ -1298,11 +1254,14 @@ bool BleService::setSimulation(std::string body){
     }
     bool simulationStatus = json_data["simulation"];
     LOGI("Setting simulation mode to {}", simulationStatus);
+    
     if (simulationStatus){
         simulationEnable.store(true);
+        bleSimulation.enableSimulation();
     }
     else{
         simulationEnable.store(false);
+        bleSimulation.disableSimulation();
     }
     return true;
 }
