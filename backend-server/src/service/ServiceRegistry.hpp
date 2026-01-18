@@ -25,6 +25,10 @@ public:
         return nullptr;
     }
 
+    void clearServices() {
+        m_services.clear();
+    }
+
 private:
     ServiceRegistry() = default;
     std::map<std::string, std::shared_ptr<IService>> m_services;

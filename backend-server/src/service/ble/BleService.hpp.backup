@@ -14,23 +14,12 @@
 #include "BleFrameBuilder.hpp"
 #include "CharRegistry.hpp"
 #include "BleSimulation.hpp"
-#include "EventLoopManager.hpp"
-#include "BlueZAdapter.hpp"
 #include "BleDeviceManager.hpp"
 #include "BleCharacteristicManager.hpp"
 #include "BleDataProcessor.hpp"
+#include "BlueZAdapter.hpp"
+#include "EventLoopManager.hpp"
 
-/**
- * @class BleService
- * @brief Unified facade for Bluetooth Low Energy operations
- * 
- * This service acts as a facade coordinating specialized managers:
- * - EventLoopManager: Async D-Bus event loops
- * - BlueZAdapter: BlueZ D-Bus adapter management
- * - BleDeviceManager: Device discovery, connection, pairing
- * - BleCharacteristicManager: GATT services and characteristics
- * - BleDataProcessor: Real-time sensor data streaming
- */
 
 class BleService : public IService {
 public:

@@ -48,7 +48,7 @@ public:
     //     , m_nickname(nickname)
     //     , m_userId(userId)
     //     {}
-    ~GraphWebSocket();
+    ~GraphWebSocket() noexcept;
 
     // const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket;
     // const oatpp::String& graphName;

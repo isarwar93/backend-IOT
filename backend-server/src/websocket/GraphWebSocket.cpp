@@ -4,9 +4,10 @@
 #include "config/Constants.hpp"
 #include "websocket/WSComm.hpp"
 
-GraphWebSocket::~GraphWebSocket(){
-    // Cleanup resources if needed
-    LOGI("Destructor called, cleaning up resources.");
+GraphWebSocket::~GraphWebSocket() noexcept {
+    // Don't log or do anything that requires oatpp environment
+    // Members will be destroyed automatically in reverse order of declaration
+    // If any member throws, std::terminate will be called due to noexcept
 }
 
 

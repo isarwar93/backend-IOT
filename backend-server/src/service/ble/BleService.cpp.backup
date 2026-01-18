@@ -1,0 +1,350 @@
+#include "BleService.hpp"
+#include "config/LogAdapt.hpp"
+#include <nlohmann/json.hpp>
+
+// Constructor
+BleService::BleService()
+    : m_running(false), m_macAddress(""), m_lastCommandResponse(""), m_adapterPath("")
+{
+    // Managers will be initialized in start() after BlueZ is initialized
+}
+
+// Destructor
+BleService::~BleService()
+{
+    stop();
+}
+
+// IService implementation
+bool BleService::start()
+{
+    if (m_running) return true;
+    
+    LOGI("Starting BLE Service.");
+    
+    if (!initBluez()) {
+        LOGE("Failed to initialize BlueZ.");
+        return false;
+    }
+    
+    m_running = true;
+    return true;
+}
+
+void BleService::stop()
+{
+    if (!m_running) return;
+    
+    LOGI("Stopping BLE Service.");
+    if (m_dataProcessor) {
+        m_dataProcessor->shutdown();
+    }
+    m_running = false;
+}
+
+bool BleService::isRunning() const
+{
+    return m_running;
+}
+
+bool BleService::configure(const std::string& jsonConfig)
+{
+    try {
+        auto json = nlohmann::json::parse(jsonConfig);
+        // Add configuration logic as needed
+        return true;
+    } catch (const std::exception& e) {
+        LOGE("Configuration error: {}", e.what());
+        return false;
+    }
+}
+
+std::string BleService::sendCommand(const std::string& command)
+{
+    m_lastCommandResponse = "Command: " + command;
+    return m_lastCommandResponse;
+}
+
+std::string BleService::getStatusJson() const
+{
+    nlohmann::json status;
+    status["running"] = m_running;
+    status["adapter"] = m_adapterPath;
+    return status.dump();
+}
+
+// Device operations (delegated to BleDeviceManager)
+std::vector<BleDeviceInfo> BleService::scanDevices(int timeoutSeconds)
+{
+    if (!m_deviceManager) return {};
+    return m_deviceManager->scanDevices(timeoutSeconds);
+}
+
+bool BleService::connectToDevice(const std::string& mac)
+{
+    if (!m_deviceManager) return false;
+    return m_deviceManager->connectToDevice(mac);
+}
+
+bool BleService::disconnectDevice(const std::string& mac)
+{
+    if (!m_deviceManager) return false;
+    return m_deviceManager->disconnectDevice(mac);
+}
+
+std::vector<BleServiceInfo> BleService::getServicesAndCharacteristics(const std::string& mac)
+{
+    if (!m_charManager) return {};
+    return m_charManager->getServicesAndCharacteristics(mac);
+}
+
+bool BleService::removeDevice(const std::string& body)
+{
+    try {
+        auto json = nlohmann::json::parse(body);
+        std::string mac = json.value("mac", "");
+        if (!m_deviceManager) return false;
+        return m_deviceManager->removeDevice(mac);
+    } catch (const std::exception& e) {
+        LOGE("Remove device error: {}", e.what());
+        return false;
+    }
+}
+
+bool BleService::isConnected(const std::string& body)
+{
+    try {
+        auto json = nlohmann::json::parse(body);
+        std::string mac = json.value("mac", "");
+        if (!m_deviceManager) return false;
+        return m_deviceManager->isConnected(mac);
+    } catch (const std::exception& e) {
+        LOGE("Is connected error: {}", e.what());
+        return false;
+    }
+}
+
+bool BleService::isPaired(const std::string& body)
+{
+    try {
+        auto json = nlohmann::json::parse(body);
+        std::string mac = json.value("mac", "");
+        if (!m_deviceManager) return false;
+        return m_deviceManager->isPaired(mac);
+    } catch (const std::exception& e) {
+        LOGE("Is paired error: {}", e.what());
+        return false;
+    }
+}
+
+bool BleService::pairDevice(const std::string& body)
+{
+    try {
+        auto json = nlohmann::json::parse(body);
+        std::string mac = json.value("mac", "");
+        if (!m_deviceManager) return false;
+        m_deviceManager->pairDevice(mac);
+        return true;
+    } catch (const std::exception& e) {
+        LOGE("Pair device error: {}", e.what());
+        return false;
+    }
+}
+
+bool BleService::cancelPairing(const std::string& body)
+{
+    try {
+        auto json = nlohmann::json::parse(body);
+        std::string mac = json.value("mac", "");
+        if (!m_deviceManager) return false;
+        m_deviceManager->removeDevice(mac);
+        return true;
+    } catch (const std::exception& e) {
+        LOGE("Cancel pairing error: {}", e.what());
+        return false;
+    }
+}
+
+bool BleService::trustDevice(const std::string& mac)
+{
+    if (!m_deviceManager) return false;
+    return m_deviceManager->trustDevice(mac);
+}
+
+std::vector<std::string> BleService::getConnectedDevices()
+{
+    if (!m_deviceManager) return {};
+    return m_deviceManager->getConnectedDevices();
+}
+
+bool BleService::cleanupDisconnectedDevices()
+{
+    if (!m_deviceManager) return false;
+    return m_deviceManager->cleanupDisconnectedDevices();
+}
+
+// Characteristic operations (delegated to BleCharacteristicManager)
+std::string BleService::toggleNotify(const std::string& body)
+{
+    try {
+        auto json = nlohmann::json::parse(body);
+        std::string charPath = json.value("charPath", "");
+        
+        if (!m_charManager) return "{\"error\": \"Character manager not initialized\"}";
+        
+        bool enabled = m_charManager->enableNotification(charPath);
+        return enabled ? "{\"status\": \"notifying enabled\"}" : "{\"error\": \"Failed to enable notification\"}";
+    } catch (const std::exception& e) {
+        LOGE("Toggle notify error: {}", e.what());
+        return "{\"error\": \"" + std::string(e.what()) + "\"}";
+    }
+}
+
+size_t BleService::readCharacteristics(const std::string& charPath, guint8* retData)
+{
+    if (!m_charManager) return 0;
+    return m_charManager->readCharacteristic(charPath, retData);
+}
+
+std::string BleService::readService(const std::string& mac, const std::string& uuid)
+{
+    if (!m_charManager) return "{}";
+    return m_charManager->readService(mac, uuid);
+}
+
+bool BleService::writeService(const std::string& body)
+{
+    try {
+        if (!m_charManager) return false;
+        return m_charManager->writeService(body);
+    } catch (const std::exception& e) {
+        LOGE("Write service error: {}", e.what());
+        return false;
+    }
+}
+
+bool BleService::enableServices(const std::string& mac)
+{
+    if (!m_charManager) return false;
+    return m_charManager->enableServices(mac);
+}
+
+void BleService::printScanResults(const std::vector<BleDeviceInfo>& devices)
+{
+    if (!m_deviceManager) return;
+    m_deviceManager->printScanResults(devices);
+}
+
+// Graph operations (delegated to BleDataProcessor)
+void BleService::addGraphSocket(v_int32 userId, 
+    const std::shared_ptr<oatpp::websocket::AsyncWebSocket>& socket,
+    const std::shared_ptr<WSComm>& graphWebSocket)
+{
+    if (!m_dataProcessor) return;
+    m_dataProcessor->addGraphSocket(userId, socket, graphWebSocket);
+}
+
+void BleService::leaveGraph(v_int32 userId)
+{
+    if (!m_dataProcessor) return;
+    m_dataProcessor->leaveGraph(userId);
+}
+
+void BleService::streamGraph()
+{
+    if (!m_dataProcessor) return;
+    m_dataProcessor->startStreaming();
+}
+
+bool BleService::isEmpty() const
+{
+    if (!m_dataProcessor) return true;
+    return m_dataProcessor->isEmpty();
+}
+
+// Simulation
+bool BleService::setSimulation(std::string body)
+{
+    try {
+        auto json = nlohmann::json::parse(body);
+        bool enable = json.value("enable", false);
+        
+        if (enable) {
+            m_simulation.enableSimulation();
+            if (m_dataProcessor) {
+                m_dataProcessor->setSimulation(&m_simulation);
+            }
+        } else {
+            m_simulation.disableSimulation();
+        }
+        return true;
+    } catch (const std::exception& e) {
+        LOGE("Set simulation error: {}", e.what());
+        return false;
+    }
+}
+
+bool BleService::webSocketMsgSetFps(std::string body)
+{
+    try {
+        auto json = nlohmann::json::parse(body);
+        int fps = json.value("fps", 20);
+        if (!m_dataProcessor) return false;
+        m_dataProcessor->setWebSocketFps(fps);
+        return true;
+    } catch (const std::exception& e) {
+        LOGE("Set FPS error: {}", e.what());
+        return false;
+    }
+}
+
+// Initialization helpers
+bool BleService::initBluez()
+{
+    // Initialize loop manager
+    if (!m_loopManager) {
+        m_loopManager = std::make_unique<EventLoopManager>();
+    }
+
+    // Initialize BlueZ adapter
+    if (!m_bluezAdapter) {
+        m_bluezAdapter = std::make_unique<BlueZAdapter>();
+    }
+
+    if (!m_bluezAdapter->initialize()) {
+        LOGE("Failed to initialize BlueZ adapter");
+        return false;
+    }
+
+    m_adapterPath = m_bluezAdapter->getAdapterPath();
+
+    // Get D-Bus connection from adapter
+    auto connection = m_bluezAdapter->getConnection();
+    if (!connection) {
+        LOGE("Failed to get D-Bus connection");
+        return false;
+    }
+
+    // Initialize managers with D-Bus connection
+    if (!m_deviceManager) {
+        m_deviceManager = std::make_unique<BleDeviceManager>(connection);
+    }
+    if (!m_charManager) {
+        m_charManager = std::make_unique<BleCharacteristicManager>(connection);
+        m_charManager->setAdapterPath(m_adapterPath);
+    }
+    if (!m_dataProcessor) {
+        m_dataProcessor = std::make_unique<BleDataProcessor>(&m_frameBuilder, &m_charRegistry);
+    }
+
+    initializeManagers();
+    return true;
+}
+
+void BleService::initializeManagers()
+{
+    // Set up manager dependencies if needed
+    if (m_dataProcessor) {
+        // Dependencies already set in constructor
+    }
+}

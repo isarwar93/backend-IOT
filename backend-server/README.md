@@ -433,5 +433,41 @@ The backend server follows a layered architecture:
 5. **WebSocket Listeners** - Manages real-time peer connections
 6. **Utilities** - Provides cryptographic and JWT token handling
 
+## BLE Service Refactoring Progress
+
+The BLE service is undergoing systematic refactoring to improve code organization and maintainability. The monolithic 1,267-line BleService is being decomposed into focused, reusable managers.
+
+### Completed Phases
+
+[PHASE 1] EventLoopManager and BlueZAdapter
+- EventLoopManager (157 lines) - Manages GMainLoop workers for async D-Bus operations
+- BlueZAdapter (181 lines) - Encapsulates BlueZ adapter communication
+- BleSimulation refactored (146 lines, reduced 61%)
+- Status: COMPLETE - All tests pass
+
+[PHASE 2] BleDeviceManager
+- BleDeviceManager (425 lines) - Device discovery, connection, pairing, trust management
+- Extracted 250+ lines of device operations from BleService
+- Status: COMPLETE - Build verified [100%]
+
+[PHASE 3] BleCharacteristicManager
+- BleCharacteristicManager (415 lines) - Service/characteristic discovery and GATT operations
+- Extracted 150+ lines of characteristic operations from BleService
+- Includes UUID mapping and notification management
+- Status: COMPLETE - All tests pass, build verified [100%]
+
+[PHASE 4] BleDataProcessor
+- BleDataProcessor (383 lines) - Graph streaming and sensor data processing
+- Extracted 250+ lines of data processing operations from BleService
+- Dual-mode operation (simulation/real sensor data)
+- FPS regulation and WebSocket client management
+- Status: COMPLETE - All tests pass, build verified [100%]
+
+### Upcoming Phases
+
+[PHASE 5] BleService Simplification - Reduce to ~100 line facade
+
+For detailed refactoring progress, see [PHASE_4_SUMMARY.md](docs/PHASE_4_SUMMARY.md)
+
 
 

@@ -36,7 +36,7 @@ pkg_check_modules(DBUS REQUIRED dbus-1)
 pkg_check_modules(BLUETOOTH REQUIRED bluez)
 
 # Apply include dirs and libs to library
-include_directories(${project_name}-lib PRIVATE
+target_include_directories(${project_name}-lib PUBLIC
   ${GLIB2_INCLUDE_DIRS}
   ${DBUS_INCLUDE_DIRS}
   ${BLUETOOTH_INCLUDE_DIRS}
