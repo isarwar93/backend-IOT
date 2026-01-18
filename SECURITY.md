@@ -43,5 +43,5 @@ When deploying this backend server:
 ## Known Security Considerations
 
 - JWT token validation is implemented - ensure proper secret key management
-- BLE service requires appropriate system permissions
+- BLE service requires appropriate system permissions (bluetooth group membership, CAP_NET_RAW capability for raw socket access)
 - MQTT connections should use TLS in production environments
