@@ -1,13 +1,24 @@
 #include "websocket/WSComm.hpp"
 #include "model/Room.hpp"
 #include "./AppComponent.hpp"
+#include <thread>
+#include <chrono>
 
 WSComm::~WSComm(){
-
-    // OATPP_LOGi("Graph listener", "Class destroyed");
+    // Clear the socket reference to prevent further sends
+    m_socket = nullptr;
+    
+    // Give a brief moment for any pending async operations to complete
+    // This prevents "pure virtual method called" errors
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 }
 
 void WSComm::sendMessage(const oatpp::String& message) {
+    // Check if socket is still valid before sending
+    if (!m_socket) {
+        return; // Socket already destroyed, skip send
+    }
+    
     class SendMessageCoroutine : public oatpp::async::Coroutine<SendMessageCoroutine> {
     private:
         oatpp::async::Lock* m_lock;
@@ -22,10 +33,17 @@ void WSComm::sendMessage(const oatpp::String& message) {
             , m_message(message)
             {}
         Action act() override {
+            // Check if websocket is still valid
+            if (!m_websocket) {
+                return finish();
+            }
             return oatpp::async::synchronize(m_lock, m_websocket->sendOneFrameTextAsync(m_message)).next(finish());
         }
     };
-    m_asyncExecutor->execute<SendMessageCoroutine>(&m_writeLock, m_socket, message);
+    
+    if (m_asyncExecutor) {
+        m_asyncExecutor->execute<SendMessageCoroutine>(&m_writeLock, m_socket, message);
+    }
 }
   
 oatpp::async::CoroutineStarter WSComm::readMessage(const std::shared_ptr<AsyncWebSocket>& socket, v_uint8 opcode, p_char8 data, oatpp::v_io_size size) {

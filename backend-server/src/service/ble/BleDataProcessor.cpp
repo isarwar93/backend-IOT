@@ -43,6 +43,7 @@ void BleDataProcessor::addGraphSocket(v_int32 graphId,
 }
 
 void BleDataProcessor::leaveGraph(v_int32 userId) {
+    bool shouldJoin = false;
     {
         std::lock_guard<std::mutex> lock(m_graphMutex);
         m_graphClients.erase(userId);
@@ -52,10 +53,12 @@ void BleDataProcessor::leaveGraph(v_int32 userId) {
             LOGI("All graph clients disconnected, stopping graph streaming");
             m_graphRunning = false;
             m_cv.notify_all();
+            shouldJoin = true;
         }
     }
 
-    if (m_graphThread.joinable()) {
+    // Join outside the lock to avoid deadlock
+    if (shouldJoin && m_graphThread.joinable()) {
         m_graphThread.join();
     }
 }
@@ -209,10 +212,29 @@ void BleDataProcessor::streamGraph() {
             std::string jsonData = simulation_->generateSimulationData(counter, counter2, counter3, baseValue);
             auto newJson = nlohmann::json::parse(jsonData);
 
-            // Broadcast to all connected clients
+            // Copy shared_ptr to clients to keep them alive during send
+            std::vector<std::shared_ptr<WSComm>> clients;
+            clients.reserve(m_graphById.size());
             for (auto& pair : m_graphById) {
-                pair.second->sendMessage(newJson.dump().c_str());
+                if (pair.second) {
+                    clients.push_back(pair.second);
+                }
             }
+            
+            // Release lock before sending to avoid holding lock during I/O
+            lock.unlock();
+            
+            // Broadcast to all connected clients
+            for (auto& client : clients) {
+                try {
+                    client->sendMessage(newJson.dump().c_str());
+                } catch (const std::exception& e) {
+                    LOGW("Error sending message to client: {}", e.what());
+                }
+            }
+            
+            lock.lock();
+            if (!m_graphRunning) break;
 
             // Control FPS
             int fps = m_webSocketMsgFps.load();
@@ -244,28 +266,47 @@ void BleDataProcessor::streamGraph() {
 
         auto newJson = nlohmann::json::object();
 
-        // Broadcast to all connected clients
+        // Copy shared_ptr to clients to keep them alive during send
+        std::vector<std::pair<v_int32, std::shared_ptr<WSComm>>> clients;
+        clients.reserve(m_graphById.size());
         for (auto& pair : m_graphById) {
-            LOGI("Sending graph data to userId={}", pair.first);
-
-            // Add timestamp
-            auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-            newJson["time"] = std::to_string(now);
-
-            // Add all updated graph data points
-            for (auto& graphData : m_graphData) {
-                if (!graphData.second.updated) {
-                    continue; // Skip non-updated values
-                }
-
-                newJson["id"] = graphData.first;
-                newJson["value"] = graphData.second.value;
-                pair.second->sendMessage(newJson.dump().c_str());
-
-                // Mark as processed
-                graphData.second.updated = false;
+            if (pair.second) {
+                clients.emplace_back(pair.first, pair.second);
             }
         }
+        
+        // Release lock before sending
+        lock.unlock();
+        
+        // Broadcast to all connected clients
+        for (auto& [userId, client] : clients) {
+            try {
+                LOGI("Sending graph data to userId={}", userId);
+
+                // Add timestamp
+                auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+                newJson["time"] = std::to_string(now);
+
+                // Add all updated graph data points
+                for (auto& graphData : m_graphData) {
+                    if (!graphData.second.updated) {
+                        continue; // Skip non-updated values
+                    }
+
+                    newJson["id"] = graphData.first;
+                    newJson["value"] = graphData.second.value;
+                    client->sendMessage(newJson.dump().c_str());
+
+                    // Mark as processed
+                    graphData.second.updated = false;
+                }
+            } catch (const std::exception& e) {
+                LOGW("Error sending message to userId={}: {}", userId, e.what());
+            }
+        }
+        
+        lock.lock();
+        if (!m_graphRunning) break;
 
         // Reset change flag after sending
         m_graphValueChanged.store(false);
