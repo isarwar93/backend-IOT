@@ -1,4 +1,4 @@
-# backend-IOT
+# Backend-IOT
 
 IoT Backend Server built with oatpp framework for real-time sensor data collection and WebSocket communication.
 
