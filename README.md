@@ -8,7 +8,6 @@ This repository contains a high-performance backend server for IoT applications,
 
 - WebSocket APIs for real-time data streaming
 - Bluetooth Low Energy (BLE) service integration
-- MQTT protocol support
 - Asynchronous processing for handling multiple simultaneous connections
 - Cross-platform support (Ubuntu native and cross-compilation for IMX7/Yocto)
 
@@ -61,10 +60,6 @@ make -j$(nproc)
 
 The server will start on port 8000 by default.
 
-## Documentation
-
-For detailed installation instructions, architecture overview, and cross-compilation guide, see the [backend-server README](backend-server/README.md).
-
 ## Project Structure
 
 ```
@@ -78,10 +73,14 @@ backend-IOT/
 └── README.md            # This file
 ```
 
+## Future Features
+
+- MQTT protocol support for enhanced IoT messaging capabilities
+
 ## License
 
-See [LICENSE.txt](LICENSE.txt) for details.
+See [LICENSE](LICENSE) for details.
 
 ## Third-Party Components
 
-This project uses oatpp - see [LICENSE-oatpp](LICENSE-oatpp) and [Third-party-notice.txt](Third-party-notice.txt).
+This project uses oatpp - see [LICENSE](LICENSE) and [Third-party-notice.txt](Third-party-notice.txt).
